@@ -17,6 +17,7 @@ def get_task_info(task_id):
         bounds = [-0.5, 0.5]
     elif task_id == "T5": # Rosenbrock
         shift = np.zeros(dim)
+        bounds = [-50, 50]
     elif task_id == "T6": # Ackley
         shift = np.full(dim, 40.0)
         bounds = [-50, 50]
@@ -30,7 +31,7 @@ def get_task_info(task_id):
         bounds = [-500, 500]
     elif task_id == "T9": # Griewank (Hỗn hợp)
         shift = np.concatenate([np.full(25, -80.0), np.full(25, 80.0)])
-        bounds = [-600, 600]
+        bounds = [-100, 100]
     elif task_id == "T10": # Rastrigin (Hỗn hợp)
         shift = np.concatenate([np.full(25, 40.0), np.full(25, -40.0)])
         bounds = [-50, 50]
