@@ -34,19 +34,18 @@ def calculated_mmd(P, i, j, width):
     mmd = term1 - term2 + term3
     return mmd
 
-def MTS(num_task, P, sources, width):
+def MTS(index, num_task, P, sources, width):
 
-    mmd = [[] for _ in range(num_task + 1)]
-    L = [[] for _ in range(num_task + 1)]
-    for i in range(num_task + 1):
-        for j in range(num_task + 1):
-            if i != j:
+    mmd = []
+    L = []
+    for i in range(1, num_task + 1):
+        if i != index:
 
-               mmd_val = calculated_mmd(P, i, j, width)
-               mmd[i].append((mmd_val, j))
+            mmd_val = calculated_mmd(P, index, i, width)
+            mmd.append((mmd_val, i))
         
-        mmd[i].sort(key = lambda x: x[0])
-        L[i] = [item[1] for item in mmd[i][:sources]]
+    mmd.sort(key = lambda x: x[0])
+    L = [item[1] for item in mmd[:sources]]
 
     return L
         
