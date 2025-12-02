@@ -11,6 +11,7 @@ def tournament_selection(num_candidates, pool_size):
     Hàm này sẽ ưu tiên chọn index nhỏ.
     """
     candidates = [random.randint(0, pool_size - 1) for _ in range(num_candidates)]
+    
     return min(candidates)
 
 def SBX_crossover(P, T, lower, upper, ETA_C, ETA_M):
@@ -30,12 +31,12 @@ def SBX_crossover(P, T, lower, upper, ETA_C, ETA_M):
     while cnt < population:
         # [SỬA LỖI] Dùng Tournament Selection thay vì random hoàn toàn
         # Chọn 2 ứng viên ngẫu nhiên, lấy người tốt hơn (index nhỏ hơn) làm cha/mẹ
-        p1_idx = tournament_selection(2, pool_size)
-        p2_idx = tournament_selection(2, pool_size)
+        p1_idx = tournament_selection(3, pool_size)
+        p2_idx = tournament_selection(3, pool_size)
         
         # Đảm bảo 2 cha mẹ khác nhau
         while p1_idx == p2_idx:
-            p2_idx = tournament_selection(2, pool_size)
+            p2_idx = tournament_selection(3, pool_size)
         
         parent1 = parent[p1_idx]
         parent2 = parent[p2_idx]

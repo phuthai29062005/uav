@@ -12,11 +12,6 @@ num_task = 10
 population = 100
 generation = 1000
 M = int(0.05 * generation)
-if M < 2: M = 2
-
-IDEAL_SOURCES = {
-    5: [1], 6: [2], 7: [3, 4], 9: [4]
-}
 
 def log_to_file(task_id, generation, fitness):
     if not os.path.exists("results"):
@@ -61,20 +56,19 @@ def get_best(num_task, P, child, T):
     
     for k in range(len(parent)):
         unified_gen = parent[k][:dim]
-        # Clip an toàn
         unified_gen = np.clip(unified_gen, 0, 1)
         
         real_gen = bounds[0] + unified_gen * (bounds[1] - bounds[0])
         cost = calculate_objective_function(f"T{num_task}", real_gen, shift)
+        
+        if cost < 0: cost = -cost
         fitness_data.append((cost, parent[k]))
         
     # Sắp xếp tăng dần theo cost (Minimization)
     fitness_data.sort(key = lambda x: x[0])
     
-    # Lấy top Population
     top_items = fitness_data[:population]
     
-    # Tách ra P mới và Fitness mới
     new_P = [item[1] for item in top_items]
     new_fitness = [item[0] for item in top_items]
     
@@ -88,10 +82,10 @@ def EMaTO_AMR():
         _, dim, _ = get_task_info(f"T{i}")
         if dim > dim_max: dim_max = dim
 
-    P = [[] for _ in range(num_task + 1)]
-    # [SỬA] Khởi tạo đúng kích thước population
+    P = [[] for _ in range(num_task + 1)] 
+
     for i in range(1, num_task + 1):
-        P[i] = np.random.uniform(0, 1, (population, dim_max))
+        P[i] = np.random.uniform(0, 1, (population + 1, dim_max))
 
     W = [[] for _ in range(num_task + 1)]
     FIR = np.zeros(num_task + 1)
@@ -121,7 +115,7 @@ def EMaTO_AMR():
         
         ETA_C = 20 
         ETA_M = 20
-        if gen <= 600:
+        if gen <= 950:
             ETA_C = 2 
             ETA_M = 5  
         # Quản lý sliding window
@@ -142,44 +136,29 @@ def EMaTO_AMR():
             atp, t = ATP(i, gen, 1.0, W[i])
             rate = np.random.uniform(0, 1)
             
-            # --- TRANSFER ---
             if rate <= atp:
                 L = MTS(i, num_task, P, sources=5, width=1.0)
                 # Đếm task tốt
-                if i in IDEAL_SOURCES:
-                    count = len(set(L).intersection(set(IDEAL_SOURCES[i])))
-                    # (Optional) Log count if needed
                 for source_idx in L:
                     good_task[i][source_idx] += 1
                 
-                # Gọi RDA (P_fitness lúc này luôn đồng bộ với P)
                 T = RDA(P, P_fitness, i, L, transferred_tasks=5, Ntop=10)
                 child = SBX_crossover(P[i], T, 0, 1, ETA_C, ETA_M)
-                # Cập nhật P và P_fitness mới ngay lập tức
                 P[i], P_fitness[i] = get_best(i, P[i], child, T)
             
-            # --- NO TRANSFER ---
             else:
                 child = SBX_crossover(P[i], [], 0, 1, ETA_C, ETA_M)
                 P[i], P_fitness[i] = get_best(i, P[i], child, [])
             
-            # --- CẬP NHẬT KẾT QUẢ ---
-            current_best = P_fitness[i][0] # Phần tử 0 là tốt nhất
+            current_best = P_fitness[i][0]
             
             # Cập nhật Global Best
-            if current_best < history_fit[i]:
-                history_fit[i] = current_best
-                shift, dim, bounds = get_task_info(f"T{i}")
-                best_u = P[i][0][:dim]
-                Final_gen[i] = bounds[0] + best_u * (bounds[1] - bounds[0])
 
-            # Tính FIR
             denom = history_fit[i] if abs(history_fit[i]) > 1e-9 else 1e-9
-            # FIR nên tính dựa trên cải thiện của thế hệ này so với Global Best
-            # Hoặc so với thế hệ trước (Local improvement). Code cũ dùng Global.
-            fir = (history_fit[i] - current_best) / denom 
-            # Lưu ý: Nếu current_best == history_fit (không cải thiện), fir = 0.
-            
+            fir = (history_fit[i] - current_best) / denom
+            fir = max(0.0, fir)
+            history_fit[i] = current_best       
+
             if gen == 0:
                 W[i].append((t, 0.0))
             else:
