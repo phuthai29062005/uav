@@ -36,9 +36,11 @@ def test_baseline_noop_methods():
     assert len(agent.replay_buffer) == 0
 
 
-def test_baseline_runs_end_to_end():
+def test_baseline_runs_end_to_end(tmp_path):
     """mode_baseline chay duoc va tra ve dung format."""
-    res = train.mode_baseline(["DF1"], n_runs=2, n_changes=5)
+    log_path = str(tmp_path / "baseline.jsonl")
+    res = train.mode_baseline(["DF1"], n_runs=2, n_changes=5,
+                              log_path=log_path)
 
     assert "DF1" in res
     mean, std, migds = res["DF1"]

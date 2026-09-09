@@ -30,6 +30,7 @@ def run_sa_drl(problem_class, n_t, tau_t,
 
     pending_state = pending_action = pending_hv_base = None
     pending_fe = 0
+    fes_counter = N  # initial evaluate
     igd_history = []
 
     for gen in range(total_gens):
@@ -55,6 +56,7 @@ def run_sa_drl(problem_class, n_t, tau_t,
             problem_new = problem_class(time=t_new, n_var=D)
             F_before = F.copy()
             F_after_change = problem_new.evaluate(pop)
+            fes_counter += N
             hv_base = hv_calc(F_after_change)
 
             # 4. State moi
@@ -86,6 +88,7 @@ def run_sa_drl(problem_class, n_t, tau_t,
             pending_state, pending_action = state, actions
             pending_hv_base = hv_base
             pending_fe = count_fe(actions, N, n_elite, len(segments))
+            fes_counter += pending_fe
 
             # 8. Ghi IGD
             PF = problem.pareto_front()
@@ -98,8 +101,15 @@ def run_sa_drl(problem_class, n_t, tau_t,
                       f"IGD={igd_history[-1]:.6f}")
 
         pop, F = nsga2_one_generation(pop, F, problem, N)
+        fes_counter += N
 
     if training:
         agent.decay_epsilon()
 
-    return float(np.mean(igd_history)), igd_history
+    return {
+        "migd": float(np.mean(igd_history)) if igd_history else float("inf"),
+        "igd_history": igd_history,
+        "fes_used": int(fes_counter),
+        "feasible_ratio": 1.0,
+        "hv_final": float(hv_calc(F)),
+    }

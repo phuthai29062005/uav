@@ -33,6 +33,7 @@ from pymoo.problems.dynamic.df import (
 from baselines import NSGA2Baseline
 from dqn_agent import DQNAgent
 from dynamic_runner import run_sa_drl
+from experiment_logger import ExperimentLogger
 
 ALL_PROBLEMS = {
     "DF1": DF1, "DF2": DF2, "DF3": DF3, "DF4": DF4, "DF5": DF5,
@@ -73,7 +74,7 @@ def new_agent(segments, seed, eps_fixed=None):
 
 
 def one_run(name, agent, segments, seed, training, n_changes):
-    """Goi run_sa_drl voi cau hinh chuan cho mot bai."""
+    """Goi run_sa_drl voi cau hinh chuan cho mot bai. Tra ve dict."""
     N, ref_point = problem_setup(name)
     return run_sa_drl(
         ALL_PROBLEMS[name],
@@ -84,14 +85,55 @@ def one_run(name, agent, segments, seed, training, n_changes):
     )
 
 
+def default_log_path(mode, problems):
+    base = {
+        "debug": f"debug_{'_'.join(problems)}",
+        "online": "bang1_online",
+        "loo": "bang2_loo",
+        "ablation": "bang3_ablation",
+        "baseline": "baseline_nsga2",
+    }[mode]
+    return f"results/{base}.jsonl"
+
+
+def _base_params(name, n_changes, **extra):
+    N, _ = problem_setup(name)
+    params = {
+        "N": N,
+        "D": CFG["D"],
+        "n_t": CFG["n_t"],
+        "tau_t": CFG["tau_t"],
+        "n_changes": n_changes,
+        "warm_up": CFG["warm_up"],
+        "n_elite": CFG["n_elite"],
+    }
+    params.update(extra)
+    return params
+
+
+def logged_run(logger, algo, name, agent, segments, seed,
+               training, n_changes, params):
+    with logger.run(algo=algo, problem=name, seed=seed, params=params):
+        result = one_run(name, agent, segments, seed,
+                         training=training, n_changes=n_changes)
+        logger.record(
+            migd=result["migd"],
+            hv=result["hv_final"],
+            fes=result["fes_used"],
+            feasible_ratio=result["feasible_ratio"],
+        )
+    return result
+
+
 def train_on(problem_names, n_episodes, segments, seed=30, log_every=20):
     """Huan luyen mot agent tren tap bai cho truoc."""
     agent = new_agent(segments, seed)
     log = []
     for ep in range(n_episodes):
         name = problem_names[ep % len(problem_names)]
-        migd, _ = one_run(name, agent, segments, seed + ep,
-                          training=True, n_changes=TRAIN_CHANGES)
+        result = one_run(name, agent, segments, seed + ep,
+                         training=True, n_changes=TRAIN_CHANGES)
+        migd = result["migd"]
         log.append({"ep": ep, "problem": name, "migd": migd, "eps": agent.eps})
         if log_every and ep % log_every == 0:
             recent = np.mean([r["migd"] for r in log[-log_every:]])
@@ -102,15 +144,24 @@ def train_on(problem_names, n_episodes, segments, seed=30, log_every=20):
 
 
 def eval_frozen(agent, problem_names, segments, n_runs, n_changes,
-                verbose=True):
+                logger=None, algo=None, verbose=True):
     """Danh gia agent da dong bang tren cac bai cho truoc."""
     results = {}
     for name in problem_names:
         migds, t0 = [], time.time()
         for run in range(n_runs):
-            migd, _ = one_run(name, agent, segments, EVAL_SEED_BASE + run,
-                              training=False, n_changes=n_changes)
-            migds.append(migd)
+            seed = EVAL_SEED_BASE + run
+            if logger is not None:
+                params = _base_params(name, n_changes)
+                result = logged_run(
+                    logger, algo=algo, name=name, agent=agent,
+                    segments=segments, seed=seed,
+                    training=False, n_changes=n_changes, params=params,
+                )
+            else:
+                result = one_run(name, agent, segments, seed,
+                                 training=False, n_changes=n_changes)
+            migds.append(result["migd"])
         results[name] = (float(np.mean(migds)), float(np.std(migds)), migds)
         if verbose:
             print(f"  {name:5s} MIGD = {np.mean(migds):.6f} "
@@ -119,7 +170,7 @@ def eval_frozen(agent, problem_names, segments, n_runs, n_changes,
 
 
 # ------------------------------------------------------------------ modes
-def mode_debug(names, n_episodes, n_runs, n_changes):
+def mode_debug(names, n_episodes, n_runs, n_changes, log_path):
     print("=== DEBUG — train va test cung bai, CO overfit ===")
     print("    Chi de kiem tra agent co hoc khong. Khong dua vao luan van.\n")
     segments = make_segments(CFG["D"])
@@ -134,41 +185,50 @@ def mode_debug(names, n_episodes, n_runs, n_changes):
           else "  -> Agent KHONG hoc, kiem tra reward va learn()")
 
     agent.eps = 0.0
+    logger = ExperimentLogger(log_path)
     print()
-    return eval_frozen(agent, names, segments, n_runs, n_changes)
+    return eval_frozen(agent, names, segments, n_runs, n_changes,
+                       logger=logger, algo="SA-DRL-DMOEA-debug")
 
 
-def mode_online(names, n_runs, n_changes):
+def mode_online(names, n_runs, n_changes, log_path):
     print("=== ONLINE — khong tien huan luyen, so cong bang ===\n")
     segments = make_segments(CFG["D"])
+    logger = ExperimentLogger(log_path)
     results = {}
     for name in names:
         migds, t0 = [], time.time()
         for run in range(n_runs):
             seed = EVAL_SEED_BASE + run
-            # eps co dinh 0.3: online chi co 1 episode, khong co "qua
-            # thoi gian" de decay -> giu 30% tham do trong run.
             agent = new_agent(segments, seed, eps_fixed=0.3)
-            migd, _ = one_run(name, agent, segments, seed,
-                              training=True, n_changes=n_changes)
-            migds.append(migd)
+            params = _base_params(name, n_changes,
+                                  eps_fixed=0.3, hidden=64, gamma=0.95)
+            result = logged_run(
+                logger, algo="SA-DRL-DMOEA-online",
+                name=name, agent=agent, segments=segments,
+                seed=seed, training=True, n_changes=n_changes,
+                params=params,
+            )
+            migds.append(result["migd"])
         results[name] = (float(np.mean(migds)), float(np.std(migds)), migds)
         print(f"  {name:5s} MIGD = {np.mean(migds):.6f} "
               f"+/- {np.std(migds):.6f}   ({time.time()-t0:.0f}s)")
     return results
 
 
-def mode_loo(names, n_episodes, n_runs, n_changes):
+def mode_loo(names, n_episodes, n_runs, n_changes, log_path):
     print("=== LEAVE-ONE-OUT — kha nang tong quat hoa ===\n")
     segments = make_segments(CFG["D"])
+    logger = ExperimentLogger(log_path)
     results = {}
     for held_out in names:
         train_set = [n for n in ALL_PROBLEMS if n != held_out]
         print(f"[{held_out}] train tren {len(train_set)} bai con lai")
         agent, _ = train_on(train_set, n_episodes, segments,
                             log_every=max(1, n_episodes // 4))
-        agent.eps = 0.0                            # dong bang
+        agent.eps = 0.0
         res = eval_frozen(agent, [held_out], segments, n_runs, n_changes,
+                          logger=logger, algo="SA-DRL-DMOEA-loo",
                           verbose=False)
         results[held_out] = res[held_out]
         m, s, _ = res[held_out]
@@ -176,8 +236,9 @@ def mode_loo(names, n_episodes, n_runs, n_changes):
     return results
 
 
-def mode_ablation(names, n_episodes, n_runs, n_changes):
+def mode_ablation(names, n_episodes, n_runs, n_changes, log_path):
     print("=== ABLATION — phan doan co dong gop khong ===\n")
+    logger = ExperimentLogger(log_path)
     results = {}
     for label, n_seg in [("S=1 khong phan doan", 1), ("S=2 co phan doan", 2)]:
         print(label)
@@ -185,26 +246,31 @@ def mode_ablation(names, n_episodes, n_runs, n_changes):
         agent, _ = train_on(names, n_episodes, segments,
                             log_every=max(1, n_episodes // 3))
         agent.eps = 0.0
-        results[label] = eval_frozen(agent, names, segments,
-                                     n_runs, n_changes)
+        results[label] = eval_frozen(
+            agent, names, segments, n_runs, n_changes,
+            logger=logger, algo="SA-DRL-DMOEA-ablation")
         print()
     return results
 
 
-def mode_baseline(names, n_runs, n_changes):
+def mode_baseline(names, n_runs, n_changes, log_path):
     print("=== BASELINE — NSGA-II thuan, khong phan ung ===\n")
     segments = make_segments(CFG["D"])
+    logger = ExperimentLogger(log_path)
     results = {}
     for name in names:
         migds, t0 = [], time.time()
         for run in range(n_runs):
             seed = EVAL_SEED_BASE + run
-            # baseline khong can torch/random seed cho mang,
-            # nhung run_sa_drl van seed noi bo theo `seed`
             agent = NSGA2Baseline(n_segments=len(segments))
-            migd, _ = one_run(name, agent, segments, seed,
-                              training=False, n_changes=n_changes)
-            migds.append(migd)
+            params = _base_params(name, n_changes)
+            result = logged_run(
+                logger, algo="NSGA2-baseline",
+                name=name, agent=agent, segments=segments,
+                seed=seed, training=False, n_changes=n_changes,
+                params=params,
+            )
+            migds.append(result["migd"])
         results[name] = (float(np.mean(migds)),
                          float(np.std(migds)), migds)
         print(f"  {name:5s} MIGD = {np.mean(migds):.6f} "
@@ -223,6 +289,8 @@ def main():
     ap.add_argument("--runs", type=int, default=N_EVAL_RUNS)
     ap.add_argument("--changes", type=int, default=EVAL_CHANGES)
     ap.add_argument("--out", default=None, help="file json luu ket qua")
+    ap.add_argument("--log-path", default=None,
+                    help="Path to JSONL log file (default: auto by mode)")
     args = ap.parse_args()
 
     names = (list(ALL_PROBLEMS) if args.problems == "all"
@@ -231,17 +299,23 @@ def main():
         if n not in ALL_PROBLEMS:
             raise SystemExit(f"Khong biet bai: {n}")
 
+    log_path = args.log_path or default_log_path(args.mode, names)
+    print(f"Log file: {log_path}")
+
     t0 = time.time()
     if args.mode == "debug":
-        res = mode_debug(names, args.episodes, args.runs, args.changes)
+        res = mode_debug(names, args.episodes, args.runs, args.changes,
+                         log_path)
     elif args.mode == "online":
-        res = mode_online(names, args.runs, args.changes)
+        res = mode_online(names, args.runs, args.changes, log_path)
     elif args.mode == "loo":
-        res = mode_loo(names, args.episodes, args.runs, args.changes)
+        res = mode_loo(names, args.episodes, args.runs, args.changes,
+                       log_path)
     elif args.mode == "baseline":
-        res = mode_baseline(names, args.runs, args.changes)
+        res = mode_baseline(names, args.runs, args.changes, log_path)
     else:
-        res = mode_ablation(names, args.episodes, args.runs, args.changes)
+        res = mode_ablation(names, args.episodes, args.runs, args.changes,
+                            log_path)
 
     print(f"\nTong thoi gian: {time.time()-t0:.0f}s")
     if args.out:
