@@ -27,10 +27,12 @@ def _fmt(xs):
     return "[" + ", ".join(f"{x:.6f}" for x in xs) + "]"
 
 
-def test_online_reproducible():
+def test_online_reproducible(tmp_path):
     """mode online, 2 lan cung seed -> MIGD khop den 6 chu so."""
-    r1 = train.mode_online(["DF1"], n_runs=2, n_changes=5)
-    r2 = train.mode_online(["DF1"], n_runs=2, n_changes=5)
+    r1 = train.mode_online(["DF1"], n_runs=2, n_changes=5,
+                           log_path=str(tmp_path / "r1.jsonl"))
+    r2 = train.mode_online(["DF1"], n_runs=2, n_changes=5,
+                           log_path=str(tmp_path / "r2.jsonl"))
     m1, m2 = r1["DF1"][2], r2["DF1"][2]   # danh sach MIGD moi run
 
     assert len(m1) == len(m2) == 2
@@ -71,16 +73,17 @@ def test_debug_reproducible(monkeypatch):
     )
 
 
-def test_different_seed_gives_different_result(monkeypatch):
+def test_different_seed_gives_different_result(monkeypatch, tmp_path):
     """
     Sanity check: mode online voi seed KHAC nhau -> MIGD KHAC nhau.
     Neu test nay pass ma test 1&2 cung pass, ta chac reproducibility
     la that chu khong phai trivial pass (vi du moi thu bi hardcode 0).
     """
-    r1 = train.mode_online(["DF1"], n_runs=2, n_changes=5)
-    # Doi dai seed cho lan chay thu hai.
+    r1 = train.mode_online(["DF1"], n_runs=2, n_changes=5,
+                           log_path=str(tmp_path / "r1.jsonl"))
     monkeypatch.setattr(train, "EVAL_SEED_BASE", train.EVAL_SEED_BASE + 777)
-    r2 = train.mode_online(["DF1"], n_runs=2, n_changes=5)
+    r2 = train.mode_online(["DF1"], n_runs=2, n_changes=5,
+                           log_path=str(tmp_path / "r2.jsonl"))
     m1, m2 = r1["DF1"][2], r2["DF1"][2]
 
     diffs = [abs(a - b) for a, b in zip(m1, m2)]
