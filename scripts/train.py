@@ -61,6 +61,8 @@ def make_segments(D, n_seg=2):
 
 
 def new_agent(segments, seed):
+    import random
+    random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     return DQNAgent(state_dim=len(segments) + 4, n_segments=len(segments))
