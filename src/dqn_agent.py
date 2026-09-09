@@ -55,17 +55,24 @@ class DQNAgent:
     def __init__(self, state_dim, n_segments, n_actions=N_ACTIONS,
                  lr=1e-3, gamma=0.95,
                  eps_start=1.0, eps_end=0.01, eps_decay=0.995,
-                 buffer_size=10000, batch_size=64, target_update=100):
-        
+                 buffer_size=10000, batch_size=64, target_update=100,
+                 eps_fixed=None):
+
         self.n_segments = n_segments
         self.n_actions = n_actions
         self.gamma = gamma
         self.batch_size = batch_size
         self.target_update = target_update
-        
-        self.eps = eps_start
-        self.eps_end = eps_end
-        self.eps_decay = eps_decay
+
+        # eps_fixed: gia tri epsilon co dinh (khong decay) — dung cho
+        # mode online chi co 1 episode. None => decay per-episode nhu cu.
+        self.eps_fixed = eps_fixed
+        if eps_fixed is not None:
+            self.eps = eps_fixed
+        else:
+            self.eps = eps_start
+        self.eps_end = eps_end      # chi y nghia khi eps_fixed is None
+        self.eps_decay = eps_decay  # chi y nghia khi eps_fixed is None
         
         #2 network
         self.online = QNetwork(state_dim, n_segments, n_actions)
@@ -137,6 +144,8 @@ class DQNAgent:
         return loss.item()
 
     def decay_epsilon(self):
+        if self.eps_fixed is not None:
+            return
         self.eps = max(self.eps_end, self.eps * self.eps_decay)
         
 
