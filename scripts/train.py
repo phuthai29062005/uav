@@ -30,6 +30,7 @@ from pymoo.problems.dynamic.df import (
     DF8, DF9, DF10, DF11, DF12, DF13, DF14,
 )
 
+from baselines import NSGA2Baseline
 from dqn_agent import DQNAgent
 from dynamic_runner import run_sa_drl
 
@@ -190,10 +191,32 @@ def mode_ablation(names, n_episodes, n_runs, n_changes):
     return results
 
 
+def mode_baseline(names, n_runs, n_changes):
+    print("=== BASELINE — NSGA-II thuan, khong phan ung ===\n")
+    segments = make_segments(CFG["D"])
+    results = {}
+    for name in names:
+        migds, t0 = [], time.time()
+        for run in range(n_runs):
+            seed = EVAL_SEED_BASE + run
+            # baseline khong can torch/random seed cho mang,
+            # nhung run_sa_drl van seed noi bo theo `seed`
+            agent = NSGA2Baseline(n_segments=len(segments))
+            migd, _ = one_run(name, agent, segments, seed,
+                              training=False, n_changes=n_changes)
+            migds.append(migd)
+        results[name] = (float(np.mean(migds)),
+                         float(np.std(migds)), migds)
+        print(f"  {name:5s} MIGD = {np.mean(migds):.6f} "
+              f"+/- {np.std(migds):.6f}   ({time.time()-t0:.0f}s)")
+    return results
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", default="debug",
-                    choices=["debug", "online", "loo", "ablation"])
+                    choices=["debug", "online", "loo", "ablation",
+                             "baseline"])
     ap.add_argument("--problems", default="DF1",
                     help="vi du: DF1  |  DF1,DF2,DF3  |  all")
     ap.add_argument("--episodes", type=int, default=200)
@@ -215,6 +238,8 @@ def main():
         res = mode_online(names, args.runs, args.changes)
     elif args.mode == "loo":
         res = mode_loo(names, args.episodes, args.runs, args.changes)
+    elif args.mode == "baseline":
+        res = mode_baseline(names, args.runs, args.changes)
     else:
         res = mode_ablation(names, args.episodes, args.runs, args.changes)
 
