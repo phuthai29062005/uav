@@ -60,12 +60,14 @@ def make_segments(D, n_seg=2):
     return [[0], list(range(1, D))]
 
 
-def new_agent(segments, seed):
+def new_agent(segments, seed, eps_fixed=None):
     import random
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    return DQNAgent(state_dim=len(segments) + 4, n_segments=len(segments))
+    return DQNAgent(state_dim=len(segments) + 4,
+                    n_segments=len(segments),
+                    eps_fixed=eps_fixed)
 
 
 def one_run(name, agent, segments, seed, training, n_changes):
@@ -142,7 +144,9 @@ def mode_online(names, n_runs, n_changes):
         migds, t0 = [], time.time()
         for run in range(n_runs):
             seed = EVAL_SEED_BASE + run
-            agent = new_agent(segments, seed)      # moi run mot agent moi
+            # eps co dinh 0.3: online chi co 1 episode, khong co "qua
+            # thoi gian" de decay -> giu 30% tham do trong run.
+            agent = new_agent(segments, seed, eps_fixed=0.3)
             migd, _ = one_run(name, agent, segments, seed,
                               training=True, n_changes=n_changes)
             migds.append(migd)
