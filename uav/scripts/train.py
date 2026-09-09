@@ -43,6 +43,7 @@ TRI_OBJECTIVE = {"DF10", "DF11", "DF12", "DF13", "DF14"}
 CFG = dict(D=10, n_t=10, tau_t=10, warm_up=50, n_elite=10)
 TRAIN_CHANGES = 30        # rut ngan khi train cho nhanh
 EVAL_CHANGES = 100        # dung chuan CEC khi danh gia
+N_EVAL_RUNS = 30          # so seed doc lap khi danh gia (MSO: toi thieu 30)
 EVAL_SEED_BASE = 100_000  # tach hoan toan khoi dai seed training
 
 
@@ -196,7 +197,7 @@ def main():
     ap.add_argument("--problems", default="DF1",
                     help="vi du: DF1  |  DF1,DF2,DF3  |  all")
     ap.add_argument("--episodes", type=int, default=200)
-    ap.add_argument("--runs", type=int, default=20)
+    ap.add_argument("--runs", type=int, default=N_EVAL_RUNS)
     ap.add_argument("--changes", type=int, default=EVAL_CHANGES)
     ap.add_argument("--out", default=None, help="file json luu ket qua")
     args = ap.parse_args()
