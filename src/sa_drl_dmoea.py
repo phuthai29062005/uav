@@ -65,6 +65,7 @@ def compute_change_vector(elite, problem_new, segments, D):
             x_copy = x.copy()                 # copy x
             for var_idx in segments[s]:      # loop qua các biến của segment s
                 x_copy[var_idx] += 0.01      # nhiễu
+            x_copy = np.clip(x_copy, 0.0, 1.0)   # giu nhieu trong mien [0,1]
             F_nhieu = problem_new.evaluate(x_copy.reshape(1, -1))   # evaluate x_copy
             delta = np.linalg.norm(F_nhieu - F_goc)                   # norm(F_nhieu - F_goc)
             raw_c[s] += delta
