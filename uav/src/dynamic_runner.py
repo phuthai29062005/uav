@@ -15,6 +15,8 @@ def run_sa_drl(problem_class, n_t, tau_t,
                ref_point=(2.0, 2.0), n_elite=10, verbose=False):
 
     np.random.seed(seed)
+    import random
+    random.seed(seed)
     total_gens = warm_up + n_changes * tau_t
     hv_calc = HV(ref_point=np.array(ref_point))
     hv_ref = float(np.prod(ref_point))
