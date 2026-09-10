@@ -6,9 +6,17 @@ from change_detector import ChangeDetector
 from memory_archive import (MemoryArchive, calibrate_scale,
                             compute_signature)
 from nsga2_pymoo import nsga2_one_generation, seed_nsga2
-from sa_drl_dmoea import (apply_hierarchical_response, build_state,
-                          compute_entropy, compute_hv_drop, compute_phase,
-                          compute_reward, count_fe)
+from sa_drl_dmoea import (IDX_HAS_MEMORY, apply_hierarchical_response,
+                          build_state, compute_entropy, compute_hv_drop,
+                          compute_phase, compute_reward, count_fe)
+
+
+def validate_transition(state, gate):
+    """MEMORY chi hop le khi archive khong rong tai luc chon."""
+    if gate == 1 and state[IDX_HAS_MEMORY] < 0.5:
+        raise RuntimeError(
+            "MEMORY action recorded while archive was empty "
+            f"(state has_memory={state[IDX_HAS_MEMORY]})")
 
 
 def run_sa_drl(problem_class, n_t, tau_t,
@@ -107,6 +115,7 @@ def run_sa_drl(problem_class, n_t, tau_t,
 
             # 5. Push transition
             if reward is not None:
+                validate_transition(pending_state, pending_gate)
                 agent.replay_buffer.push(pending_state, pending_gate,
                                          pending_seg, reward, state, False)
                 if training:
