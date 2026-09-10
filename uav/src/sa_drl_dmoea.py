@@ -3,6 +3,12 @@ from pymoo.problems.dynamic.df import DF1
 from pymoo.indicators.hv import HV
 
 class Memory:
+    """
+    DEPRECATED: khoa theo centroid khong gian quyet dinh, mu voi
+    moi truong. Thay bang MemoryArchive (src/memory_archive.py) tu 4.1.
+    Giu lai de tai lap ket qua truoc 4.1.
+    """
+
     def __init__(self, max_size=50):
         self.keys = []      # list các khoá (centroid)
         self.pops = []      # list các population tương ứng
@@ -44,6 +50,10 @@ def repair(pop):
 
 def compute_env_key(pop):
     """
+    DEPRECATED: khong nhan problem nen hai moi truong khac nhau voi
+    cung population cho ra key GIONG HET. Thay bang
+    memory_archive.compute_signature tu 4.1.
+
     Tạo chữ ký môi trường từ population đã hội tụ.
     Ý tưởng: môi trường giống nhau → POS ở cùng vị trí → centroid giống nhau
     
@@ -174,7 +184,27 @@ def action_predict(pop, pop_prev, segment_vars, noise=0.02):
     
     return pop_new
 
+def action_memory_global(pop, pop_mem):
+    """
+    Thay TOAN BO population bang population lich su.
+    KHONG splice segment — day la thay doi thiet ke, xem 4.1.
+
+    Neu N_mem != N: lay min(N, N_mem) ca the dau, phan con lai giu
+    tu pop hien tai.
+    """
+    if pop_mem is None:
+        return pop.copy()
+    n = min(len(pop), len(pop_mem))
+    pop_new = pop.copy()
+    pop_new[:n] = pop_mem[:n]
+    return repair(pop_new)
+
+
 def action_memory(pop, memory, key, segment_vars):
+    """
+    DEPRECATED: splice segment mau thuan voi canh bao coupling muc 5.8;
+    thay bang action_memory_global tu 4.1.
+    """
     pop_mem = memory.retrieve(key)
     
     if pop_mem is None:
@@ -236,7 +266,7 @@ def count_fe(actions, N, n_elite, n_segments):
 
     return fe
 
-def apply_actions(pop, pop_prev, actions, segments, memory, key):
+def apply_actions(pop, pop_prev, actions, segments, pop_mem=None):
     """
     Áp dụng hành động cho từng segment lên CÙNG một population
 
@@ -244,8 +274,7 @@ def apply_actions(pop, pop_prev, actions, segments, memory, key):
     pop_prev: population 2 epoch trước — cho action_predict
     actions:  np.array (S,) — hành động mỗi segment
     segments: [[0], [1,...,9]]
-    memory:   đối tượng Memory
-    key:      khoá môi trường để retrieve
+    pop_mem:  population lich su tu MemoryArchive.query(), hoac None
 
     return: pop mới đã repair
     """
@@ -261,7 +290,9 @@ def apply_actions(pop, pop_prev, actions, segments, memory, key):
         elif a == 2:
             pop_new = action_predict(pop_new, pop_prev, seg_vars)
         elif a == 3:
-            pop_new = action_memory(pop_new, memory, key, seg_vars)
+            pop_new = (action_memory_global(pop_new, pop_mem)
+                       if pop_mem is not None
+                       else action_local(pop_new, seg_vars))
         elif a == 4:
             pop_new = action_diversify(pop_new, seg_vars)
 

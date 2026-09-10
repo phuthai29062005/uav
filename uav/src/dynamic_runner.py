@@ -3,10 +3,11 @@ from pymoo.indicators.hv import HV
 from pymoo.indicators.igd import IGD
 
 from change_detector import ChangeDetector
+from memory_archive import MemoryArchive, compute_signature
 from nsga2_pymoo import nsga2_one_generation, seed_nsga2
-from sa_drl_dmoea import (Memory, apply_actions, build_state,
-                          compute_entropy, compute_env_key, compute_hv_drop,
-                          compute_phase, compute_reward, count_fe)
+from sa_drl_dmoea import (apply_actions, build_state, compute_entropy,
+                          compute_hv_drop, compute_phase, compute_reward,
+                          count_fe)
 
 
 def run_sa_drl(problem_class, n_t, tau_t,
@@ -23,7 +24,9 @@ def run_sa_drl(problem_class, n_t, tau_t,
     hv_ref = float(np.prod(ref_point))
     fe_budget = N * tau_t
 
-    memory = Memory()
+    archive = MemoryArchive()
+    archive.clear()
+    obj_scale = np.asarray(ref_point, dtype=float)
     detector = ChangeDetector(
         segments=segments,
         obj_scale=np.asarray(ref_point, dtype=float),
@@ -43,6 +46,9 @@ def run_sa_drl(problem_class, n_t, tau_t,
     igd_history = []
     raw_change_history = []
     normalized_change_history = []
+    d_mem_history = []
+    has_memory_history = []
+    pending_signature = None
 
     for gen in range(total_gens):
         is_change = (gen >= warm_up) and ((gen - warm_up) % tau_t == 0)
@@ -59,9 +65,11 @@ def run_sa_drl(problem_class, n_t, tau_t,
             else:
                 reward = None
 
-            # 2. Store population da hoi tu
-            if gen > warm_up:
-                memory.store(compute_env_key(pop), pop)
+            # 2. STORE population cuoi cua environment VUA ROI, voi
+            #    signature cua environment VUA ROI. Entry cua t chi
+            #    duoc store sau khi da roi khoi t -> khong tu retrieve.
+            if pending_signature is not None:
+                archive.store(pending_signature, pop)
 
             # 3. Sang moi truong moi
             problem_new = problem_class(time=t_new, n_var=D)
@@ -69,6 +77,13 @@ def run_sa_drl(problem_class, n_t, tau_t,
             F_after_change = problem_new.evaluate(pop)
             fes_counter += N
             hv_base = hv_calc(F_after_change)
+
+            # RETRIEVE — truoc khi store bat cu thu gi cua t
+            sig_t = compute_signature(X_probe, problem_new, obj_scale)
+            fes_counter += len(X_probe)
+            mem = archive.query(sig_t)
+            d_mem_history.append(mem["d_mem"])
+            has_memory_history.append(mem["has_memory"])
 
             # 4. State moi
             res_c   = detector.compute(X_probe, problem_new)
@@ -90,8 +105,8 @@ def run_sa_drl(problem_class, n_t, tau_t,
 
             # 6. Chon + thi hanh
             actions = agent.select_action(state, training=training)
-            key = compute_env_key(pop)
-            pop_new = apply_actions(pop, pop_prev, actions, segments, memory, key)
+            pop_new = apply_actions(pop, pop_prev, actions, segments,
+                                    mem["pop"])
 
             pop_prev = pop.copy()
             pop = pop_new
@@ -103,6 +118,7 @@ def run_sa_drl(problem_class, n_t, tau_t,
             pending_hv_base = hv_base
             pending_fe = count_fe(actions, N, n_elite, len(segments))
             fes_counter += pending_fe
+            pending_signature = sig_t
 
             # 8. Ghi IGD
             PF = problem.pareto_front()
@@ -130,6 +146,8 @@ def run_sa_drl(problem_class, n_t, tau_t,
         "fes_used": int(fes_counter),
         "raw_change": raw_change_history,
         "normalized_change": normalized_change_history,
+        "d_mem": d_mem_history,
+        "has_memory": has_memory_history,
         "feasible_ratio": 1.0,
         "hv_final": float(hv_calc(F)),
     }

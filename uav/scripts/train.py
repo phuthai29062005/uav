@@ -135,6 +135,8 @@ def logged_run(logger, algo, name, agent, segments, seed,
             feasible_ratio=result["feasible_ratio"],
             raw_change=result["raw_change"],
             normalized_change=result["normalized_change"],
+            d_mem=result["d_mem"],
+            has_memory=result["has_memory"],
         )
     return result
 
