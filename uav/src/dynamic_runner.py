@@ -2,7 +2,7 @@ import numpy as np
 from pymoo.indicators.hv import HV
 from pymoo.indicators.igd import IGD
 
-from nsga2_pymoo import nsga2_one_generation
+from nsga2_pymoo import nsga2_one_generation, seed_nsga2
 from sa_drl_dmoea import (Memory, apply_actions, build_state,
                           compute_change_vector, compute_entropy,
                           compute_env_key, compute_hv_drop, compute_phase,
@@ -17,6 +17,7 @@ def run_sa_drl(problem_class, n_t, tau_t,
     np.random.seed(seed)
     import random
     random.seed(seed)
+    seed_nsga2(seed)
     total_gens = warm_up + n_changes * tau_t
     hv_calc = HV(ref_point=np.array(ref_point))
     hv_ref = float(np.prod(ref_point))
