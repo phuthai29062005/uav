@@ -2,7 +2,7 @@ import numpy as np
 from pymoo.indicators.hv import HV
 from pymoo.indicators.igd import IGD
 
-from nsga2 import nsga2_one_generation
+from nsga2_pymoo import nsga2_one_generation
 from sa_drl_dmoea import (Memory, apply_actions, build_state,
                           compute_change_vector, compute_entropy,
                           compute_env_key, compute_hv_drop, compute_phase,

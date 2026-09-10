@@ -49,8 +49,20 @@ N_EVAL_RUNS = 30          # so seed doc lap khi danh gia (MSO: toi thieu 30)
 EVAL_SEED_BASE = 100_000  # tach hoan toan khoi dai seed training
 
 
+SPECIAL_REF = {
+    "DF4": (5.0, 5.0),
+    "DF7": (15.0, 6.0),
+    "DF12": (3.0, 2.0, 3.0),
+    "DF13": (2.0, 2.0, 6.0),
+}
+
+
 def problem_setup(name):
     """N va ref_point phu hop so muc tieu."""
+    if name in SPECIAL_REF:
+        ref = SPECIAL_REF[name]
+        N = 150 if name in TRI_OBJECTIVE else 100
+        return N, ref
     if name in TRI_OBJECTIVE:
         return 150, (2.0, 2.0, 2.0)
     return 100, (2.0, 2.0)
