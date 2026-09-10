@@ -25,7 +25,7 @@ class ExperimentLogger:
         "timestamp", "algo", "problem", "seed", "params",
         "runtime_sec", "fes", "migd", "hv", "feasible_ratio",
         "status", "error_msg", "git_commit", "hostname",
-        "raw_change", "normalized_change",
+        "raw_change", "normalized_change", "d_mem", "has_memory",
     ]
 
     def __init__(self, path):
@@ -55,6 +55,8 @@ class ExperimentLogger:
             "hostname": self._hostname,
             "raw_change": None,
             "normalized_change": None,
+            "d_mem": None,
+            "has_memory": None,
         }
         self._pending = entry
         t0 = time.perf_counter()
@@ -75,7 +77,8 @@ class ExperimentLogger:
         if self._pending is None:
             raise RuntimeError("record() must be called inside run() context")
         allowed = {"migd", "hv", "fes", "feasible_ratio",
-                   "raw_change", "normalized_change"}
+                   "raw_change", "normalized_change",
+                   "d_mem", "has_memory"}
         for k, v in kwargs.items():
             if k not in allowed:
                 raise ValueError(f"Unknown record field: {k}. "
