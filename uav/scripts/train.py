@@ -133,6 +133,8 @@ def logged_run(logger, algo, name, agent, segments, seed,
             hv=result["hv_final"],
             fes=result["fes_used"],
             feasible_ratio=result["feasible_ratio"],
+            raw_change=result["raw_change"],
+            normalized_change=result["normalized_change"],
         )
     return result
 

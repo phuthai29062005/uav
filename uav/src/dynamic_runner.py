@@ -2,11 +2,11 @@ import numpy as np
 from pymoo.indicators.hv import HV
 from pymoo.indicators.igd import IGD
 
+from change_detector import ChangeDetector
 from nsga2_pymoo import nsga2_one_generation, seed_nsga2
 from sa_drl_dmoea import (Memory, apply_actions, build_state,
-                          compute_change_vector, compute_entropy,
-                          compute_env_key, compute_hv_drop, compute_phase,
-                          compute_reward, count_fe)
+                          compute_entropy, compute_env_key, compute_hv_drop,
+                          compute_phase, compute_reward, count_fe)
 
 
 def run_sa_drl(problem_class, n_t, tau_t,
@@ -24,6 +24,14 @@ def run_sa_drl(problem_class, n_t, tau_t,
     fe_budget = N * tau_t
 
     memory = Memory()
+    detector = ChangeDetector(
+        segments=segments,
+        obj_scale=np.asarray(ref_point, dtype=float),
+        eps=0.01, kappa=2.0, lam=0.05, verbose=False,
+    )
+    # Probe set dong bang ca episode: c_tilde phai do environmental
+    # change, khong tron voi population movement (xem QUY TAC 3).
+    X_probe = None
     pop = np.random.rand(N, D)
     pop_prev = pop.copy()
     problem = problem_class(time=0.0, n_var=D)
@@ -33,6 +41,8 @@ def run_sa_drl(problem_class, n_t, tau_t,
     pending_fe = 0
     fes_counter = N  # initial evaluate
     igd_history = []
+    raw_change_history = []
+    normalized_change_history = []
 
     for gen in range(total_gens):
         is_change = (gen >= warm_up) and ((gen - warm_up) % tau_t == 0)
@@ -61,8 +71,11 @@ def run_sa_drl(problem_class, n_t, tau_t,
             hv_base = hv_calc(F_after_change)
 
             # 4. State moi
-            elite = pop[:n_elite]
-            c       = compute_change_vector(elite, problem_new, segments, D)
+            res_c   = detector.compute(X_probe, problem_new)
+            c       = res_c["c"]
+            fes_counter += res_c["fe_used"]
+            raw_change_history.append(res_c["c_tilde"].tolist())
+            normalized_change_history.append(c.tolist())
             entropy = compute_entropy(pop)
             hv_drop = compute_hv_drop(F_before, F_after_change, ref_point)
             phase   = compute_phase(t_new)
@@ -104,6 +117,10 @@ def run_sa_drl(problem_class, n_t, tau_t,
         pop, F = nsga2_one_generation(pop, F, problem, N)
         fes_counter += N
 
+        if gen == warm_up - 1:
+            X_probe = pop[:n_elite].copy()
+            fes_counter += detector.prime(X_probe, problem)
+
     if training:
         agent.decay_epsilon()
 
@@ -111,6 +128,8 @@ def run_sa_drl(problem_class, n_t, tau_t,
         "migd": float(np.mean(igd_history)) if igd_history else float("inf"),
         "igd_history": igd_history,
         "fes_used": int(fes_counter),
+        "raw_change": raw_change_history,
+        "normalized_change": normalized_change_history,
         "feasible_ratio": 1.0,
         "hv_final": float(hv_calc(F)),
     }

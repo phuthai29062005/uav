@@ -53,6 +53,10 @@ def compute_env_key(pop):
     return centroid
 
 def compute_change_vector(elite, problem_new, segments, D):
+    """
+    DEPRECATED: do local sensitivity, khong phai temporal change.
+    Giu lai de tai lap ket qua Bang 1/3 truoc 4.3.
+    """
     S = len(segments)                    # số segments (=2 trên CEC)
     n_elite = len(elite)
     raw_c = np.zeros(S)                  # tích luỹ chênh lệch
