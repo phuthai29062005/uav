@@ -1,9 +1,22 @@
-import warnings
-
 import numpy as np
 
 
-def compute_signature(X_probe, problem_t, obj_scale):
+def calibrate_scale(F0):
+    """
+    F0: (n, M) = F(X_probe, t0), evaluate tai cuoi warm-up.
+    return: (M,) scale co dinh cho toan run.
+
+    Median thay vi max: bat bien voi outlier. Do tai t0 de z ~ 1 o
+    dau run (giua thang squash) roi tang dan khi moi truong troi,
+    thay vi bat dau tu vung da bao hoa. Khong phai tune: duoc do,
+    tat dinh theo seed, tu thich nghi sang UAV.
+    """
+    F0 = np.asarray(F0, dtype=float)
+    assert np.all(F0 >= 0), "objectives phai non-negative"
+    return np.median(F0, axis=0) + 1e-8
+
+
+def compute_signature(X_probe, problem_t, obj_scale, return_saturation=False):
     """
     Chu ky cua MOI TRUONG, khong phai cua population hien tai.
 
@@ -13,36 +26,31 @@ def compute_signature(X_probe, problem_t, obj_scale):
 
     X_probe  : (n, D) probe set CO DINH cua episode
     problem_t: problem tai t
-    obj_scale: (M,) thang co dinh, dung ref_point
+    obj_scale: (M,) scale do tai t0 bang calibrate_scale, co dinh trong run
 
-    return: np.ndarray (L,) signature, L = 5*M, moi component in [0,1]
+    return: np.ndarray (L,) signature, L = 5*M, moi component in [0,1)
+            (kem soft_sat_rate neu return_saturation)
     """
     F = problem_t.evaluate(np.asarray(X_probe, dtype=float))
-    F_hat = F / np.asarray(obj_scale, dtype=float)
+    assert np.all(F >= 0), f"negative objective: min={F.min()}"
+
+    Z = F / np.asarray(obj_scale, dtype=float)
+    U = Z / (1.0 + Z)                 # soft squash, don anh, in [0, 1)
 
     stats = []
-    for m in range(F_hat.shape[1]):
-        col = F_hat[:, m]
+    for m in range(U.shape[1]):
+        col = U[:, m]
         stats.extend([
             col.mean(),
-            col.std(),
+            2.0 * col.std(),          # std cua [0,1] toi da 0.5
             np.percentile(col, 25),
             np.percentile(col, 50),
             np.percentile(col, 75),
         ])
     e = np.asarray(stats, dtype=float)
-
-    # Clip de d_mem chuan hoa theo sqrt(L) co y nghia. Neu F vuot
-    # ref_point thi clip lam mat thong tin -> canh bao.
-    # Message co dinh (khong nhung so) de warnings dedup — canh bao nay
-    # kich hoat o phan lon lan doi: X_probe dong bang tu warm-up nen o
-    # cac environment sau no nam xa PF va F vuot ref_point.
-    if ((e < 0.0) | (e > 1.0)).mean() > 0.01:
-        warnings.warn(
-            "compute_signature: >1% component bi clip ve [0,1] — "
-            "ref_point co the qua hep so voi probe set dong bang",
-            RuntimeWarning, stacklevel=2)
-    return np.clip(e, 0.0, 1.0)
+    if return_saturation:
+        return e, float(np.mean(U > 0.99))
+    return e
 
 
 class MemoryArchive:
@@ -60,6 +68,7 @@ class MemoryArchive:
         self.signatures = []
         self.pops = []
         self.max_size = max_size
+        self.obj_scale = None   # do MOT LAN tai prime, co dinh trong run
 
     def __len__(self):
         return len(self.signatures)

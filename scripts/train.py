@@ -137,6 +137,7 @@ def logged_run(logger, algo, name, agent, segments, seed,
             normalized_change=result["normalized_change"],
             d_mem=result["d_mem"],
             has_memory=result["has_memory"],
+            sig_saturation=result["sig_saturation"],
         )
     return result
 

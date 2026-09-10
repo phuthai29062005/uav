@@ -3,7 +3,8 @@ from pymoo.indicators.hv import HV
 from pymoo.indicators.igd import IGD
 
 from change_detector import ChangeDetector
-from memory_archive import MemoryArchive, compute_signature
+from memory_archive import (MemoryArchive, calibrate_scale,
+                            compute_signature)
 from nsga2_pymoo import nsga2_one_generation, seed_nsga2
 from sa_drl_dmoea import (apply_actions, build_state, compute_entropy,
                           compute_hv_drop, compute_phase, compute_reward,
@@ -26,7 +27,7 @@ def run_sa_drl(problem_class, n_t, tau_t,
 
     archive = MemoryArchive()
     archive.clear()
-    obj_scale = np.asarray(ref_point, dtype=float)
+    obj_scale = np.asarray(ref_point, dtype=float)   # cho ChangeDetector
     detector = ChangeDetector(
         segments=segments,
         obj_scale=np.asarray(ref_point, dtype=float),
@@ -48,6 +49,7 @@ def run_sa_drl(problem_class, n_t, tau_t,
     normalized_change_history = []
     d_mem_history = []
     has_memory_history = []
+    sig_saturation_history = []
     pending_signature = None
 
     for gen in range(total_gens):
@@ -79,8 +81,11 @@ def run_sa_drl(problem_class, n_t, tau_t,
             hv_base = hv_calc(F_after_change)
 
             # RETRIEVE — truoc khi store bat cu thu gi cua t
-            sig_t = compute_signature(X_probe, problem_new, obj_scale)
+            sig_t, sat = compute_signature(X_probe, problem_new,
+                                           archive.obj_scale,
+                                           return_saturation=True)
             fes_counter += len(X_probe)
+            sig_saturation_history.append(sat)
             mem = archive.query(sig_t)
             d_mem_history.append(mem["d_mem"])
             has_memory_history.append(mem["has_memory"])
@@ -136,6 +141,9 @@ def run_sa_drl(problem_class, n_t, tau_t,
         if gen == warm_up - 1:
             X_probe = pop[:n_elite].copy()
             fes_counter += detector.prime(X_probe, problem)
+            # Scale signature do MOT LAN tai t0, co dinh trong run.
+            archive.obj_scale = calibrate_scale(problem.evaluate(X_probe))
+            fes_counter += len(X_probe)
 
     if training:
         agent.decay_epsilon()
@@ -148,6 +156,7 @@ def run_sa_drl(problem_class, n_t, tau_t,
         "normalized_change": normalized_change_history,
         "d_mem": d_mem_history,
         "has_memory": has_memory_history,
+        "sig_saturation": sig_saturation_history,
         "feasible_ratio": 1.0,
         "hv_final": float(hv_calc(F)),
     }
