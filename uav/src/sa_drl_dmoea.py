@@ -131,16 +131,23 @@ def compute_phase(t, period=4.0):
     phase = (t % period) / period
     return phase
 
-def build_state(c, entropy, hv_drop, g_last, tau_t, phase):
+# Segment action IDs (4.1B): MEMORY khong con la segment action.
+SEG_KEEP, SEG_LOCAL, SEG_PREDICT, SEG_DIVERSIFY = 0, 1, 2, 3
+GATE_NO_MEMORY, GATE_MEMORY = 0, 1
+# Vi tri trong state — moi noi doc d_mem/has_memory DUNG hang so nay.
+IDX_D_MEM = -2
+IDX_HAS_MEMORY = -1
+
+
+def build_state(c, entropy, hv_drop, g_last, tau_t, phase,
+                d_mem, has_memory):
     """
-    Ghép tất cả thành 1 vector duy nhất cho RL agent
-    
-    return: np.array shape (S + 4,)
-            với S=2 → shape (6,)
+    [c_1..c_S, entropy, hv_drop, g_norm, phase, d_mem, has_memory]
+    return: np.array shape (S + 6,). has_memory LUON la phan tu cuoi.
     """
-    g_norm = g_last / tau_t     # → ∈ [0, 1)
-    state = np.concatenate([c, [entropy, hv_drop, g_norm, phase]])
-    return state
+    g_norm = g_last / tau_t
+    return np.concatenate([c, [entropy, hv_drop, g_norm, phase,
+                               float(d_mem), float(has_memory)]])
     
 def action_keep(pop, segment_vars):
     return pop.copy()
@@ -246,28 +253,48 @@ def compute_reward(hv_after, hv_base, hv_ref, fe_used, fe_budget,
 
 ACTION_KEEP = 0
 
-def count_fe(actions, N, n_elite, n_segments):
+def count_fe(gate, seg_actions, N):
     """
-    Đếm số lần evaluate cá thể trong 1 epoch phản ứng
-
-    actions:    np.array (S,) — hành động mỗi segment
-    N:          population size
-    n_elite:    số elite dùng tính change vector
-    n_segments: S
+    FE cua buoc phan ung: evaluate lai ca population (N) neu co bat ky
+    thay doi — gate=MEMORY hoac segment nao khac KEEP.
+    FE cua ChangeDetector va signature duoc dem tai nguon (fe_used,
+    len(X_probe)), KHONG cong o day de tranh dem hai lan.
     """
-    # Chi phí cố định: compute_change_vector
-    #   mỗi elite cần 1 lần evaluate gốc + S lần evaluate nhiễu
-    fe = n_elite * (1 + n_segments)  # 1 lần evaluate gốc + S lần evaluate nhiễu
+    if gate == GATE_MEMORY or np.any(np.asarray(seg_actions) != SEG_KEEP):
+        return N
+    return 0
 
-    # Chi phí biến đổi: nếu CÓ segment nào khác keep
-    #   → phải evaluate lại cả population, nhưng CHỈ 1 lần
-    if np.any(actions != ACTION_KEEP):
-        fe += N
 
-    return fe
+def apply_hierarchical_response(pop, pop_prev, gate, seg_actions,
+                                segments, pop_mem):
+    """
+    gate=1 (MEMORY): thay TOAN BO pop bang pop_mem. seg_actions BO QUA.
+    gate=0: chay seg_actions tren tung segment, KHONG dung pop_mem.
+    """
+    if gate == GATE_MEMORY:
+        assert pop_mem is not None, "MEMORY chosen but archive empty"
+        return action_memory_global(pop, pop_mem)
+
+    pop_new = pop.copy()
+    for s, a in enumerate(seg_actions):
+        v = segments[s]
+        if a == SEG_KEEP:
+            pass
+        elif a == SEG_LOCAL:
+            pop_new = action_local(pop_new, v)
+        elif a == SEG_PREDICT:
+            pop_new = action_predict(pop_new, pop_prev, v)
+        elif a == SEG_DIVERSIFY:
+            pop_new = action_diversify(pop_new, v)
+        else:
+            raise ValueError(f"bad seg action {a}")
+    return repair(pop_new)
 
 def apply_actions(pop, pop_prev, actions, segments, pop_mem=None):
     """
+    DEPRECATED (4.1B): map cu 3=memory, 4=diversify. MEMORY gio la
+    gate toan cuc — dung apply_hierarchical_response.
+
     Áp dụng hành động cho từng segment lên CÙNG một population
 
     pop:      population hiện tại (N, D)
