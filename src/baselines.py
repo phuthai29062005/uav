@@ -15,8 +15,8 @@ class NSGA2Baseline:
     Dung de doi chung trong Bang 1.
 
     API giong DQNAgent (duck typing) de run_sa_drl dung chung interface
-    ma khong phai sua gi. Luon chon hanh dong keep (0) cho moi phan doan,
-    nen apply_actions khong dung vao population -> chi con NSGA-II chay.
+    ma khong phai sua gi. Luon chon gate=NO_MEMORY va keep (0) cho moi phan doan,
+    nen apply_hierarchical_response khong dung vao population -> chi con NSGA-II chay.
     """
 
     def __init__(self, n_segments):
@@ -25,7 +25,7 @@ class NSGA2Baseline:
         self.eps = 0.0  # co thuoc tinh de tuong thich, khong dung
 
     def select_action(self, state, training=True):
-        return np.zeros(self.n_segments, dtype=np.int64)
+        return 0, np.zeros(self.n_segments, dtype=np.int64)
 
     def learn(self):
         return None

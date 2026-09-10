@@ -6,9 +6,9 @@ from change_detector import ChangeDetector
 from memory_archive import (MemoryArchive, calibrate_scale,
                             compute_signature)
 from nsga2_pymoo import nsga2_one_generation, seed_nsga2
-from sa_drl_dmoea import (apply_actions, build_state, compute_entropy,
-                          compute_hv_drop, compute_phase, compute_reward,
-                          count_fe)
+from sa_drl_dmoea import (apply_hierarchical_response, build_state,
+                          compute_entropy, compute_hv_drop, compute_phase,
+                          compute_reward, count_fe)
 
 
 def run_sa_drl(problem_class, n_t, tau_t,
@@ -41,7 +41,7 @@ def run_sa_drl(problem_class, n_t, tau_t,
     problem = problem_class(time=0.0, n_var=D)
     F = problem.evaluate(pop)
 
-    pending_state = pending_action = pending_hv_base = None
+    pending_state = pending_gate = pending_seg = pending_hv_base = None
     pending_fe = 0
     fes_counter = N  # initial evaluate
     igd_history = []
@@ -50,6 +50,8 @@ def run_sa_drl(problem_class, n_t, tau_t,
     d_mem_history = []
     has_memory_history = []
     sig_saturation_history = []
+    gate_history = []
+    seg_history = []
     pending_signature = None
 
     for gen in range(total_gens):
@@ -99,19 +101,23 @@ def run_sa_drl(problem_class, n_t, tau_t,
             entropy = compute_entropy(pop)
             hv_drop = compute_hv_drop(F_before, F_after_change, ref_point)
             phase   = compute_phase(t_new)
-            state   = build_state(c, entropy, hv_drop, 0, tau_t, phase)
+            state   = build_state(c, entropy, hv_drop, 0, tau_t, phase,
+                                  d_mem=mem["d_mem"],
+                                  has_memory=float(mem["has_memory"]))
 
             # 5. Push transition
             if reward is not None:
-                agent.replay_buffer.push(pending_state, pending_action,
-                                         reward, state, False)
+                agent.replay_buffer.push(pending_state, pending_gate,
+                                         pending_seg, reward, state, False)
                 if training:
                     agent.learn()
 
             # 6. Chon + thi hanh
-            actions = agent.select_action(state, training=training)
-            pop_new = apply_actions(pop, pop_prev, actions, segments,
-                                    mem["pop"])
+            gate, seg = agent.select_action(state, training=training)
+            gate_history.append(int(gate))
+            seg_history.append([int(a) for a in seg])
+            pop_new = apply_hierarchical_response(pop, pop_prev, gate, seg,
+                                                  segments, mem["pop"])
 
             pop_prev = pop.copy()
             pop = pop_new
@@ -119,9 +125,9 @@ def run_sa_drl(problem_class, n_t, tau_t,
             F = problem.evaluate(pop)
 
             # 7. Cat pending
-            pending_state, pending_action = state, actions
+            pending_state, pending_gate, pending_seg = state, gate, seg
             pending_hv_base = hv_base
-            pending_fe = count_fe(actions, N, n_elite, len(segments))
+            pending_fe = count_fe(gate, seg, N)
             fes_counter += pending_fe
             pending_signature = sig_t
 
@@ -132,7 +138,7 @@ def run_sa_drl(problem_class, n_t, tau_t,
 
             if verbose and change_idx % 20 == 0:
                 print(f"  Change {change_idx:3d}, t={t_new:.2f}, "
-                      f"c={np.round(c,2)}, actions={actions}, "
+                      f"c={np.round(c,2)}, gate={gate}, seg={seg}, "
                       f"IGD={igd_history[-1]:.6f}")
 
         pop, F = nsga2_one_generation(pop, F, problem, N)
@@ -157,6 +163,8 @@ def run_sa_drl(problem_class, n_t, tau_t,
         "d_mem": d_mem_history,
         "has_memory": has_memory_history,
         "sig_saturation": sig_saturation_history,
+        "gate_action": gate_history,
+        "seg_actions": seg_history,
         "feasible_ratio": 1.0,
         "hv_final": float(hv_calc(F)),
     }

@@ -80,7 +80,7 @@ def new_agent(segments, seed, eps_fixed=None):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    return DQNAgent(state_dim=len(segments) + 4,
+    return DQNAgent(state_dim=len(segments) + 6,
                     n_segments=len(segments),
                     eps_fixed=eps_fixed)
 
@@ -138,6 +138,8 @@ def logged_run(logger, algo, name, agent, segments, seed,
             d_mem=result["d_mem"],
             has_memory=result["has_memory"],
             sig_saturation=result["sig_saturation"],
+            gate_action=result["gate_action"],
+            seg_actions=result["seg_actions"],
         )
     return result
 
