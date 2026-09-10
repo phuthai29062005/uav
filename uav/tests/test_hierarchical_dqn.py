@@ -9,7 +9,9 @@ import torch
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "..", "src"))
 
-from dqn_agent import DQNAgent, best_hierarchical  # noqa: E402
+from dqn_agent import (DQNAgent, HierarchicalQNetwork,  # noqa: E402
+                       best_hierarchical)
+from dynamic_runner import validate_transition  # noqa: E402
 from sa_drl_dmoea import (IDX_D_MEM, IDX_HAS_MEMORY,  # noqa: E402
                           apply_hierarchical_response, repair)
 
@@ -101,15 +103,38 @@ def test_h6_gradient_flows_on_no_memory_transition():
 
 
 # ------------------------------------------------------ H7: d_mem WIRED
-def test_h7_d_mem_is_wired():
-    torch.manual_seed(0)
-    ag = DQNAgent(state_dim=STATE_DIM, n_segments=S)
-    a = torch.FloatTensor(make_state(1, d_mem=0.0)).unsqueeze(0)
-    b = torch.FloatTensor(make_state(1, d_mem=1.0)).unsqueeze(0)
+def test_d_mem_is_wired_deterministic():
+    """Mot duong dan duy nhat d_mem -> trunk -> gate[NO]; khong phu thuoc seed."""
+    net = HierarchicalQNetwork(STATE_DIM, S, hidden=64)
+    idx_dmem = STATE_DIM + IDX_D_MEM
     with torch.no_grad():
-        qa, _ = ag.online(a)
-        qb, _ = ag.online(b)
-    assert not torch.allclose(qa, qb)
+        for p in net.parameters():
+            p.zero_()
+        net.trunk[0].weight[0, idx_dmem] = 1.0
+        net.trunk[2].weight[0, 0] = 1.0
+        net.gate_head.weight[0, 0] = 1.0
+
+    base = torch.zeros(1, STATE_DIM)
+    s_a = base.clone(); s_a[0, idx_dmem] = 0.0
+    s_b = base.clone(); s_b[0, idx_dmem] = 1.0
+    q_a, _ = net(s_a)
+    q_b, _ = net(s_b)
+
+    assert abs(q_a[0, 0].item() - 0.0) < 1e-6
+    assert abs(q_b[0, 0].item() - 1.0) < 1e-6
+    assert abs(q_a[0, 1].item()) < 1e-6
+    assert abs(q_b[0, 1].item()) < 1e-6
+
+
+# ------------------------------------ H11: MEMORY => has_memory INVARIANT
+def test_memory_without_archive_raises():
+    state = np.zeros(STATE_DIM); state[IDX_HAS_MEMORY] = 0.0
+    with pytest.raises(RuntimeError, match="archive was empty"):
+        validate_transition(state, gate=1)
+    state[IDX_HAS_MEMORY] = 1.0
+    validate_transition(state, gate=1)
+    state[IDX_HAS_MEMORY] = 0.0
+    validate_transition(state, gate=0)
 
 
 # ----------------------------------------------- H8: SHAPES S=1,2,6

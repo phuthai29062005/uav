@@ -18,13 +18,15 @@ import train  # noqa: E402
 
 def test_baseline_always_keeps():
     """select_action luon tra ve keep-het (0) cho moi phan doan."""
-    agent = NSGA2Baseline(n_segments=2)
+    S = 2
+    agent = NSGA2Baseline(n_segments=S)
     for _ in range(10):
-        state = np.random.rand(6)
-        actions = agent.select_action(state)
-        assert np.all(actions == 0)
-        assert actions.shape == (2,)
-        assert actions.dtype in (np.int64, np.int32)
+        state = np.random.rand(S + 6)
+        gate, seg = agent.select_action(state)
+        assert gate == 0
+        assert seg.shape == (S,)
+        assert np.all(seg == 0)
+        assert seg.dtype in (np.int64, np.int32)
 
 
 def test_baseline_noop_methods():
