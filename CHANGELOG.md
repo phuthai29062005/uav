@@ -5,7 +5,10 @@
 **Invalidates all prior benchmark results on DF3-DF10, DF12-DF14 (bounds bug).**
 Offspring were clipped to [0,1] in nsga2_pymoo.py while 11/14 DF problems
 have bounds != [0,1] (DF4 is [-2,2]); every result on those problems was
-run on a wrongly constrained search space. DF1, DF2, DF11 ([0,1]) unaffected.
+run on a wrongly constrained search space. DF1, DF2, DF11 ([0,1]) are not
+affected by the bounds bug, but their results remain preliminary due to
+unresolved protocol issues (4.5A canonical NSGA-II, 4.2 reward/horizon,
+4.6, 4.7 terminal transition). Not to be read as "valid".
 
 - nsga2_pymoo: clip offspring to problem.xl/xu, not [0,1].
 - sa_drl_dmoea: repair, action_local/predict/diversify/memory_global,
@@ -16,3 +19,6 @@ run on a wrongly constrained search space. DF1, DF2, DF11 ([0,1]) unaffected.
 - dynamic_runner: population init as xl + rand*(xu-xl); bounds threaded through.
 
 Audit: DF4 static IGD 0.0138 after 200 gens (was ~0.53 clipped to [0,1]).
+DF4 static IGD after bounds correction was 0.0138 vs ~0.024 in the
+independent audit. Difference may reflect seed, population size, or survival
+implementation; deferred to 4.5A canonical-NSGA-II validation.
