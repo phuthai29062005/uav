@@ -16,17 +16,31 @@ from pymoo.indicators.igd import IGD
 from nsga2_pymoo import nsga2_one_generation, seed_nsga2
 
 
+def _validate_ref_point(ref_point, n_obj):
+    """ref_point phai duoc truyen tuong minh va khop so objective."""
+    if ref_point is None:
+        raise ValueError(
+            "ref_point must be explicitly provided and match problem.n_obj")
+    ref = np.asarray(ref_point, dtype=float)
+    if ref.ndim != 1 or len(ref) != n_obj:
+        raise ValueError(
+            f"ref_point dim {ref.shape} != problem.n_obj {n_obj}")
+    if not (np.all(np.isfinite(ref)) and np.all(ref > 0)):
+        raise ValueError(f"ref_point must be finite and positive: {ref}")
+
+
 def run_nsga2_baseline(problem_class, n_t, tau_t, N, D, n_changes, warm_up,
-                       seed=0, ref_point=(2.0, 2.0), verbose=False):
+                       seed=0, ref_point=None, verbose=False):
     np.random.seed(seed)
     random.seed(seed)
     seed_nsga2(seed)
+    _p0 = problem_class(time=0.0, n_var=D)
+    _validate_ref_point(ref_point, _p0.n_obj)
     # Timeline y het SA runner (4.6A): t=0 chay tau_t dynamic gens truoc
     # change 1; change k (1-based) -> t_k = k/n_t; K actual transitions.
     total_gens = warm_up + (n_changes + 1) * tau_t
     hv_calc = HV(ref_point=np.array(ref_point))
 
-    _p0 = problem_class(time=0.0, n_var=D)
     xl, xu = np.asarray(_p0.xl, dtype=float), np.asarray(_p0.xu, dtype=float)
     pop = xl + np.random.rand(N, D) * (xu - xl)
     problem = problem_class(time=0.0, n_var=D)
