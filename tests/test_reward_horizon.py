@@ -111,8 +111,8 @@ def test_r8_migd_alias():
     assert np.isclose(res["migd_end"], np.mean(res["igd_end_history"]))
 
 
-# --------------------------- R9: LAST TRANSITION VAN CHUA PUSH (4.7)
-def test_r9_last_transition_not_pushed():
+# --------------------------- R9: LAST TRANSITION PUSHED, TERMINAL (4.7)
+def test_r9_last_transition_pushed_terminal():
     K = 4
     agent = NSGA2Baseline(n_segments=2)
     # NSGA2Baseline dung _NoOpBuffer -> dem push qua DQNAgent that.
@@ -124,16 +124,16 @@ def test_r9_last_transition_not_pushed():
         DF1, n_t=10, tau_t=3, N=20, D=D, n_changes=K, warm_up=5,
         agent=ag, segments=SEGS, seed=0, training=True,
         ref_point=(2.0, 2.0), n_elite=5)
-    assert len(ag.replay_buffer) == K - 1
-    for tr in ag.replay_buffer.buffer:
-        assert tr[5] == 0.0        # done == False
+    assert len(ag.replay_buffer) == K            # 4.7: du K transition
+    dones = [tr[5] for tr in ag.replay_buffer.buffer]
+    assert sum(dones) == 1 and dones[-1] == 1.0  # chi transition cuoi done
 
 
 # ------------------------------------------------------ R10: REWARD COUNT
 def test_r10_reward_count():
     K = 5
     res = run(changes=K)
-    assert len(res["reward_history"]) == K - 1
+    assert len(res["reward_history"]) == K       # 4.7: du K reward
 
 
 # ------------------------------------------- R11: COUNT_FE KHONG CON LIVE
