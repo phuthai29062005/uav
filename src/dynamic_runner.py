@@ -52,10 +52,21 @@ def run_sa_drl(problem_class, n_t, tau_t,
     pop_prev = pop.copy()
     problem = problem_class(time=0.0, n_var=D)
     F = problem.evaluate(pop)
+    # Ledger FE: moi cong FE cong ca vao breakdown. Invariant cuoi run:
+    # fes_counter == sum(fe_breakdown.values()). 1 FE = 1 candidate -> 1 F.
+    fes_counter = 0
+    fe_breakdown = {"initial": 0, "nsga2": 0, "detector": 0,
+                    "signature": 0, "response": 0}
+
+    def add_fe(key, k):
+        nonlocal fes_counter
+        fes_counter += int(k)
+        fe_breakdown[key] += int(k)
+
+    add_fe("initial", len(pop))
 
     pending_state = pending_gate = pending_seg = pending_hv_base = None
     pending_fe = 0
-    fes_counter = N  # initial evaluate
     igd_history = []
     raw_change_history = []
     normalized_change_history = []
@@ -100,14 +111,14 @@ def run_sa_drl(problem_class, n_t, tau_t,
             problem_new = problem_class(time=t_new, n_var=D)
             F_before = F.copy()
             F_after_change = problem_new.evaluate(pop)
-            fes_counter += N
+            add_fe("response", len(pop))
             hv_base = hv_calc(F_after_change)
 
             # RETRIEVE — truoc khi store bat cu thu gi cua t
             sig_t, sat = compute_signature(X_probe, problem_new,
                                            archive.obj_scale,
                                            return_saturation=True)
-            fes_counter += len(X_probe)
+            add_fe("signature", len(X_probe))
             sig_saturation_history.append(sat)
             mem = archive.query(sig_t)
             d_mem_history.append(mem["d_mem"])
@@ -116,7 +127,7 @@ def run_sa_drl(problem_class, n_t, tau_t,
             # 4. State moi
             res_c   = detector.compute(X_probe, problem_new)
             c       = res_c["c"]
-            fes_counter += res_c["fe_used"]
+            add_fe("detector", res_c["fe_used"])
             raw_change_history.append(res_c["c_tilde"].tolist())
             normalized_change_history.append(c.tolist())
             entropy = compute_entropy(pop, xl, xu)
@@ -146,12 +157,13 @@ def run_sa_drl(problem_class, n_t, tau_t,
             pop = pop_new
             problem = problem_new
             F = problem.evaluate(pop)
+            add_fe("response", len(pop))   # eval THUC TE, luon N (xem audit)
 
-            # 7. Cat pending
+            # 7. Cat pending. count_fe (DEPRECATED) khong con vao FE path;
+            #    pending_fe cho reward van dung uoc luong cu (4.2 se sua).
             pending_state, pending_gate, pending_seg = state, gate, seg
             pending_hv_base = hv_base
             pending_fe = count_fe(gate, seg, N)
-            fes_counter += pending_fe
             pending_signature = sig_t
 
             # 8. Ghi IGD
@@ -166,23 +178,27 @@ def run_sa_drl(problem_class, n_t, tau_t,
                       f"c={np.round(c,2)}, gate={gate}, seg={seg}, "
                       f"IGD={igd_history[-1]:.6f}")
 
-        pop, F = nsga2_one_generation(pop, F, problem, N)
-        fes_counter += N
+        pop, F, nsga_fe = nsga2_one_generation(pop, F, problem, N,
+                                               return_fe=True)
+        add_fe("nsga2", nsga_fe)
 
         if gen == warm_up - 1:
             X_probe = pop[:n_elite].copy()
-            fes_counter += detector.prime(X_probe, problem)
+            add_fe("detector", detector.prime(X_probe, problem))
             # Scale signature do MOT LAN tai t0, co dinh trong run.
             archive.obj_scale = calibrate_scale(problem.evaluate(X_probe))
-            fes_counter += len(X_probe)
+            add_fe("signature", len(X_probe))
 
     if training:
         agent.decay_epsilon()
 
+    assert fes_counter == sum(fe_breakdown.values()), \
+        (fes_counter, fe_breakdown)
     return {
         "migd": float(np.mean(igd_history)) if igd_history else float("inf"),
         "igd_history": igd_history,
         "fes_used": int(fes_counter),
+        "fe_breakdown": dict(fe_breakdown),
         "raw_change": raw_change_history,
         "timeline": timeline,
         "normalized_change": normalized_change_history,

@@ -71,7 +71,7 @@ def binary_tournament(rank, crowding, rng):
     return i if rng.random() < 0.5 else j
 
 
-def nsga2_one_generation(pop_X, F_pop, problem, N):
+def nsga2_one_generation(pop_X, F_pop, problem, N, return_fe=False):
     pop = Population.new("X", pop_X)
     pop.set("F", F_pop)
 
@@ -98,4 +98,8 @@ def nsga2_one_generation(pop_X, F_pop, problem, N):
     survivors = _survival.do(problem, merged, n_survive=N,
                              random_state=rs_surv)
 
+    # FE = so offspring thuc su evaluate (chi problem.evaluate goi objective;
+    # SBX/PM/sorting/crowding/survival KHONG goi objective -> khong tinh).
+    if return_fe:
+        return survivors.get("X"), survivors.get("F"), int(len(off_X))
     return survivors.get("X"), survivors.get("F")
