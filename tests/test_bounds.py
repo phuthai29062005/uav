@@ -29,12 +29,19 @@ def init_pop(problem, N=40, seed=0):
 
 # --------------------- B0: OFFSPRING KHONG BI CLIP VE [0,1] (loi Phan 0)
 def test_b0_offspring_not_clipped_to_unit():
-    p = DF4(time=0.0, n_var=10)
-    seed_nsga2(0)
-    pop = init_pop(p, N=100)
+    """Tat dinh: parent co dinh + seed co dinh, khong may rui."""
+    D, N = 10, 100
+    p = DF4(n_var=D, time=0.0)
+    xl, xu = p.xl, p.xu
+    p_low = xl + 0.1 * (xu - xl)          # ~ -1.6 cho DF4
+    p_high = xu - 0.1 * (xu - xl)         # ~ +1.6 cho DF4
+    pop = np.array([p_low, p_high] * (N // 2))
     F = p.evaluate(pop)
-    new_pop, _ = nsga2_one_generation(pop, F, p, 100)
-    assert np.any(new_pop < 0) or np.any(new_pop > 1), \
+
+    seed_nsga2(42)
+    new_pop, _ = nsga2_one_generation(pop, F, p, N)
+
+    assert np.any(new_pop < 0.0) or np.any(new_pop > 1.0), \
         "offspring van bi ep ve [0,1] — bug Phan 0 chua sua"
     assert np.all(new_pop >= p.xl - 1e-9)
     assert np.all(new_pop <= p.xu + 1e-9)

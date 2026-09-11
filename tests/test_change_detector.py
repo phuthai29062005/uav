@@ -25,6 +25,7 @@ def probe(n=10, seed=0):
 
 def det(segments=SEG2, **kw):
     return ChangeDetector(segments=segments, obj_scale=np.asarray(REF),
+                          lb=np.zeros(D), ub=np.ones(D),
                           eps=0.01, kappa=2.0, lam=0.05, **kw)
 
 

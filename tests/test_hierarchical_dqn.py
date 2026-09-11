@@ -61,8 +61,8 @@ def test_h3_memory_replaces_whole_pop_ignores_seg():
     pop_mem = rng.rand(20, 10)
     segs = [[0], list(range(1, 10))]
     out = apply_hierarchical_response(pop, pop.copy(), 1, np.array([3, 3]),
-                                      segs, pop_mem)
-    assert np.allclose(out, repair(pop_mem))
+                                      segs, pop_mem, np.zeros(10), np.ones(10))
+    assert np.allclose(out, repair(pop_mem, np.zeros(10), np.ones(10)))
     assert not np.allclose(out, pop)
 
 
@@ -73,7 +73,7 @@ def test_h4_no_memory_ignores_pop_mem():
     pop_mem = rng.rand(20, 10)
     segs = [[0], list(range(1, 10))]
     out = apply_hierarchical_response(pop, pop.copy(), 0, np.array([0, 0]),
-                                      segs, pop_mem)
+                                      segs, pop_mem, np.zeros(10), np.ones(10))
     assert np.allclose(out, pop)
 
 
