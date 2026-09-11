@@ -11,12 +11,11 @@ class _NoOpBuffer:
 
 class NSGA2Baseline:
     """
-    Baseline: NSGA-II thuan, khong phan ung khi moi truong doi.
-    Dung de doi chung trong Bang 1.
+    DEPRECATED compatibility shim (4.9).
 
-    API giong DQNAgent (duck typing) de run_sa_drl dung chung interface
-    ma khong phai sua gi. Luon chon gate=NO_MEMORY va keep (0) cho moi phan doan,
-    nen apply_hierarchical_response khong dung vao population -> chi con NSGA-II chay.
+    Live NSGA-II baseline dung run_nsga2_baseline (src/baseline_runner.py)
+    va KHONG di qua SA-DRL controller. Class nay giu lai chi de duck-type
+    agent trong cac test/khao sat cu; khong dung o baseline path nua.
     """
 
     def __init__(self, n_segments):
