@@ -94,13 +94,13 @@ class DQNAgent:
     def __init__(self, state_dim, n_segments, n_seg_actions=N_SEG_ACTIONS,
                  lr=1e-3, gamma=0.95,
                  eps_start=1.0, eps_end=0.01, eps_decay=0.995,
-                 buffer_size=10000, batch_size=64, target_update=100,
+                 buffer_size=10000, batch_size=64, target_tau=0.01,
                  eps_fixed=None):
         self.n_segments = n_segments
         self.n_seg_actions = n_seg_actions
         self.gamma = gamma
         self.batch_size = batch_size
-        self.target_update = target_update
+        self.target_tau = target_tau   # Polyak; KHONG nham voi tau_t
 
         # eps_fixed: khong decay — dung cho mode online 1 episode.
         self.eps_fixed = eps_fixed
@@ -116,6 +116,15 @@ class DQNAgent:
         self.optimizer = optim.Adam(self.online.parameters(), lr=lr)
         self.replay_buffer = ReplayBuffer(capacity=buffer_size)
         self.step_count = 0
+
+    @torch.no_grad()
+    def soft_update_target(self):
+        """Polyak: theta_tgt <- (1-tau)*theta_tgt + tau*theta_online."""
+        tau = self.target_tau
+        for p_tgt, p_src in zip(self.target.parameters(),
+                                self.online.parameters()):
+            p_tgt.data.mul_(1.0 - tau)
+            p_tgt.data.add_(tau * p_src.data)
 
     def select_action(self, state, training=True):
         """return: (gate: int, seg_actions: np.ndarray (S,) int64)"""
@@ -162,9 +171,10 @@ class DQNAgent:
         loss.backward()
         self.optimizer.step()
 
+        # Soft target update sau MOI learn step (thay hard-copy moi 100
+        # step, vi online run ngan co the khong bao gio dat 100).
+        self.soft_update_target()
         self.step_count += 1
-        if self.step_count % self.target_update == 0:
-            self.target.load_state_dict(self.online.state_dict())
         return loss.item()
 
     def decay_epsilon(self):
