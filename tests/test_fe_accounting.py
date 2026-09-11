@@ -35,6 +35,11 @@ class RecordingProblem(Problem):
         self.inner.time = self.time
         out["F"] = self.inner.evaluate(X)
 
+    def _calc_pareto_front(self, *args, **kwargs):
+        # PF la metric protocol, KHONG goi _evaluate -> khong tinh FE.
+        self.inner.time = self.time
+        return self.inner.pareto_front()
+
     @property
     def time(self):
         return getattr(self, "_time", 0.0)

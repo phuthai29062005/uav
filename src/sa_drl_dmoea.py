@@ -224,16 +224,20 @@ def action_diversify(pop, segment_vars, xl, xu, ratio=0.5):
     return pop_new
 
 
-def compute_reward(hv_after, hv_base, hv_ref, fe_used, fe_budget,
+def compute_reward(hv_end, hv_pre, hv_ref, fe_used, fe_budget,
                    alpha=1.0, beta=0.1):
     """
-    hv_after:  HV cuối epoch (gen 70) — sau hành động + NSGA-II chạy xong
-    hv_base:   HV ngay khi môi trường đổi (gen 60) — trước khi phản ứng
-    hv_ref:    hằng số chuẩn hoá, ví dụ tích các thành phần ref_point
-    fe_used:   số lần evaluate đã dùng trong epoch
-    fe_budget: ngân sách FE cho 1 epoch
+    Reward cua action tai environment t, danh gia o CUOI environment do:
+    hv_end:  HV cuoi env (sau response + tau_t NSGA-II generations)
+    hv_pre:  HV cua pop ke thua duoi env moi, TRUOC response (baseline)
+    hv_ref:  hang so chuan hoa = prod(ref_point)
+    fe_used: candidate evaluations do action gay ra (actual, 4.6B)
+    fe_budget: ngan sach FE cho 1 env = N * tau_t
+
+    quality = (hv_end - hv_pre)/hv_ref. KHONG dung (hv_end - hv_response):
+    response te co the cho recovery lon gia tao, khong phai cong action.
     """
-    quality = (hv_after - hv_base) / hv_ref   # (hv_after - hv_base) / hv_ref
+    quality = (hv_end - hv_pre) / hv_ref
     cost = fe_used / fe_budget
     return alpha * quality - beta * cost
 
