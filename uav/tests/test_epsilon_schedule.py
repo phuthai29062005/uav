@@ -63,12 +63,13 @@ def test_eps_fixed_disables_decay():
     - eps_fixed=0.3: goi decay_epsilon() 10 lan -> eps van = 0.3.
     - khong eps_fixed: goi decay_epsilon() 10 lan -> eps giam.
     """
-    fixed = DQNAgent(state_dim=6, n_segments=2, eps_fixed=0.3)
+    S = 2
+    fixed = DQNAgent(state_dim=S + 6, n_segments=S, eps_fixed=0.3)
     for _ in range(10):
         fixed.decay_epsilon()
     assert fixed.eps == 0.3, f"eps_fixed nhung eps van doi: {fixed.eps}"
 
-    normal = DQNAgent(state_dim=6, n_segments=2)  # eps_fixed=None
+    normal = DQNAgent(state_dim=S + 6, n_segments=S)  # eps_fixed=None
     start = normal.eps
     for _ in range(10):
         normal.decay_epsilon()
