@@ -7,8 +7,8 @@ from memory_archive import (MemoryArchive, calibrate_scale,
                             compute_signature)
 from nsga2_pymoo import nsga2_one_generation, seed_nsga2
 from sa_drl_dmoea import (IDX_HAS_MEMORY, apply_hierarchical_response,
-                          build_state, compute_entropy, compute_hv_drop,
-                          compute_phase, compute_reward)
+                          build_state, compute_dispersion, compute_hv_drop,
+                          compute_reward)
 
 
 def validate_transition(state, gate):
@@ -145,10 +145,9 @@ def run_sa_drl(problem_class, n_t, tau_t,
             add_fe("detector", res_c["fe_used"])
             raw_change_history.append(res_c["c_tilde"].tolist())
             normalized_change_history.append(c.tolist())
-            entropy = compute_entropy(pop, xl, xu)
+            dispersion = compute_dispersion(pop, xl, xu)
             hv_drop = compute_hv_drop(F_before, F_pre, ref_point)
-            phase   = compute_phase(t_new)
-            state   = build_state(c, entropy, hv_drop, 0, tau_t, phase,
+            state   = build_state(c, dispersion, hv_drop,
                                   d_mem=mem["d_mem"],
                                   has_memory=float(mem["has_memory"]))
 

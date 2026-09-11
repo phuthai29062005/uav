@@ -80,7 +80,7 @@ def new_agent(segments, seed, eps_fixed=None):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    return DQNAgent(state_dim=len(segments) + 6,
+    return DQNAgent(state_dim=len(segments) + 4,
                     n_segments=len(segments),
                     eps_fixed=eps_fixed)
 

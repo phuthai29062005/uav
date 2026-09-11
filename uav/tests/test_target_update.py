@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(_HERE, "..", "src"))
 from dqn_agent import DQNAgent  # noqa: E402
 
 S = 2
-SD = S + 6
+SD = S + 4
 
 
 def agent(**kw):
@@ -131,8 +131,8 @@ def test_u8_terminal_ok():
 # --------------------------------------- U9: HIERARCHICAL SHAPES UNCHANGED
 @pytest.mark.parametrize("n_seg", [1, 2, 6])
 def test_u9_shapes(n_seg):
-    ag = DQNAgent(state_dim=n_seg + 6, n_segments=n_seg)
-    x = torch.rand(3, n_seg + 6)
+    ag = DQNAgent(state_dim=n_seg + 4, n_segments=n_seg)
+    x = torch.rand(3, n_seg + 4)
     for net in (ag.online, ag.target):
         qg, adv = net(x)
         assert qg.shape == (3, 2)

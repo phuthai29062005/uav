@@ -21,7 +21,7 @@ def test_baseline_always_keeps():
     S = 2
     agent = NSGA2Baseline(n_segments=S)
     for _ in range(10):
-        state = np.random.rand(S + 6)
+        state = np.random.rand(S + 4)
         gate, seg = agent.select_action(state)
         assert gate == 0
         assert seg.shape == (S,)

@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.8 — state semantics cleanup
+
+Default controller state no longer includes CEC oracle phase or the
+constant generations-since-change feature (g_norm). 'entropy' renamed to
+normalized decision-space dispersion (it was never entropy). State went
+from S+6 to S+4: [c_1..c_S, dispersion, hv_drop, d_mem, has_memory].
+compute_phase retained in source for a future oracle-phase ablation only;
+the live runner does not call it. compute_entropy kept as a deprecated
+wrapper for compute_dispersion.
+
 ## 4.5B — propagate problem bounds (CRITICAL)
 
 **Invalidates all prior benchmark results on DF3-DF10, DF12-DF14 (bounds bug).**
