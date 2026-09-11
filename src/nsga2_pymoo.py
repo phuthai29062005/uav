@@ -29,7 +29,7 @@ def nsga2_one_generation(pop_X, F_pop, problem, N):
     off = _sbx.do(problem, pop, parents_idx, random_state=rs)
     off = _pm.do(problem, off, random_state=rs)
 
-    off_X = np.clip(off.get("X"), 0.0, 1.0)
+    off_X = np.clip(off.get("X"), problem.xl, problem.xu)
     off_F = problem.evaluate(off_X)
 
     off_eval = Population.new("X", off_X)

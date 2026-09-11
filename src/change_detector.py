@@ -22,8 +22,8 @@ class ChangeDetector:
     KHONG phai do do nhay cua objective trong moi truong t.
     """
 
-    def __init__(self, segments, obj_scale, eps=0.01,
-                 kappa=2.0, lam=0.05, lb=0.0, ub=1.0, verbose=True):
+    def __init__(self, segments, obj_scale, lb, ub, eps=0.01,
+                 kappa=2.0, lam=0.05, verbose=True):
         """
         segments : list[list[int]]  chi so bien moi segment
         obj_scale: np.ndarray (M,)  thang co dinh cho tung objective
@@ -32,7 +32,11 @@ class ChangeDetector:
                           cho moi segment bat ke so chieu
         kappa    : float  he so tranh saturation
         lam      : float  toc do EMA
-        lb, ub   : bien duoi/tren cua bien quyet dinh
+        lb, ub   : bien duoi/tren cua bien quyet dinh (bat buoc)
+
+        Do derivative theo NORMALIZED coordinate z_j=(x_j-lb_j)/(ub_j-lb_j):
+        perturbation vat ly Delta_x_j = h * d_{s,j} * (ub_j - lb_j), nhung
+        finite difference van chia 2h (khong chia Delta_x).
         """
         self.segments = [list(s) for s in segments]
         self.obj_scale = np.asarray(obj_scale, dtype=float)
@@ -44,6 +48,7 @@ class ChangeDetector:
         self.D = 1 + max(i for s in self.segments for i in s)
         self.lb = np.broadcast_to(np.asarray(lb, dtype=float), (self.D,)).copy()
         self.ub = np.broadcast_to(np.asarray(ub, dtype=float), (self.D,)).copy()
+        self.width = self.ub - self.lb
 
         self.last_prime_stats = None
         self.reset()
@@ -73,20 +78,23 @@ class ChangeDetector:
             x, row = X[i], []
             for idx in self.segments:
                 n_s = len(idx)
-                a = self.eps / np.sqrt(n_s)
+                a = self.eps / np.sqrt(n_s)     # buoc normalized moi toa do
                 d = np.zeros(self.D)
                 for j in idx:
-                    if x[j] - a < self.lb[j]:
+                    # buoc vat ly moi toa do = a * width[j]
+                    step_j = a * self.width[j]
+                    if x[j] - step_j < self.lb[j]:
                         sign = 1.0          # sat bien duoi
-                    elif x[j] + a > self.ub[j]:
+                    elif x[j] + step_j > self.ub[j]:
                         sign = -1.0         # sat bien tren
                     else:
                         sign = 1.0          # canonical
                     d[j] = sign / np.sqrt(n_s)
 
-                if self._in_bounds(x + h * d) and self._in_bounds(x - h * d):
+                step = h * d * self.width     # perturbation vat ly
+                if self._in_bounds(x + step) and self._in_bounds(x - step):
                     mode = "central"
-                elif self._in_bounds(x + 2 * h * d):
+                elif self._in_bounds(x + 2 * step):
                     mode = "onesided2"
                 else:
                     mode = "onesided1"
@@ -126,7 +134,7 @@ class ChangeDetector:
         for i in range(n):
             for s in range(S):
                 st = self._stencils[i][s]
-                step = st.h * st.direction
+                step = st.h * st.direction * self.width
                 if st.mode == "central":
                     pts += [X[i] + step, X[i] - step]
                     meta += [(i, s, "p1"), (i, s, "m1")]

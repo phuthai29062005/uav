@@ -40,13 +40,13 @@ class Memory:
         idx_min = np.argmin(distances)
         return self.pops[idx_min].copy()
 
-def repair(pop):
+def repair(pop, xl, xu):
     """
-    Sửa nghiệm vi phạm ràng buộc.
-    Trên CEC: chỉ cần clip về [0,1]
-    Trên UAV: thêm kiểm tra va chạm, độ cao, tốc độ, năng lượng
+    Sua nghiem vi pham rang buoc: clip ve [xl, xu] cua bai toan.
+    Tren UAV: them kiem tra va cham, do cao, toc do, nang luong.
+    KHONG con default [0,1] — goi thieu xl/xu se TypeError, fail som.
     """
-    return np.clip(pop, 0, 1)
+    return np.clip(pop, xl, xu)
 
 def compute_env_key(pop):
     """
@@ -96,14 +96,15 @@ def compute_change_vector(elite, problem_new, segments, D):
 
     return c
 
-def compute_entropy(pop):
+def compute_entropy(pop, xl, xu):
     """
-    Đo độ đa dạng của population, chuẩn hoá về [0, 1]
+    Normalized dispersion cua population, chuan hoa theo do rong moi
+    chieu. Uniform[xl,xu] -> ~1. (Van khong phai entropy that, rename 4.8.)
     """
-    # std của mỗi biến, rồi lấy trung bình
-    # std tối đa của phân bố đều trên [0,1] là 1/sqrt(12) ≈ 0.289
-    x = np.std(pop, axis=0)
-    return np.clip(np.mean(x) / 0.289, 0, 1)
+    width = np.asarray(xu, dtype=float) - np.asarray(xl, dtype=float)
+    sigma = np.std(pop, axis=0)
+    dispersion = sigma / (width / np.sqrt(12.0))
+    return float(np.clip(np.mean(dispersion), 0.0, 1.0))
 
 def compute_hv_drop(F_before, F_after, ref_point):
     """
@@ -152,46 +153,35 @@ def build_state(c, entropy, hv_drop, g_last, tau_t, phase,
 def action_keep(pop, segment_vars):
     return pop.copy()
 
-def action_local(pop, segment_vars, sigma=0.05):
+def action_local(pop, segment_vars, xl, xu, sigma_frac=0.05):
     """
-    Thêm nhiễu Gaussian nhỏ vào các biến của segment
-    sigma: độ lớn nhiễu (nhỏ = tinh chỉnh nhẹ)
-    """
-    pop_new = pop.copy()
-    for i in range(pop.shape[0]):
-        for var_idx in segment_vars:
-            noise = np.random.normal(0, sigma)
-            pop_new[i, var_idx] += noise
-            pop_new[i, var_idx] = np.clip(pop_new[i, var_idx], 0, 1)
-    return pop_new
-
-def action_predict(pop, pop_prev, segment_vars, noise=0.02):
-    """
-    Dự đoán tuyến tính dựa trên hướng dịch chuyển của CENTROID
+    Nhieu Gaussian nho vao cac bien cua segment. sigma scale theo do
+    rong moi chieu (sigma_frac * width), KHONG hang so tuyet doi.
     """
     pop_new = pop.copy()
-    
-    # 1. Tính centroid của pop tại segment_vars
-    centroid = np.mean(pop[:, segment_vars], axis=0)        # gợi ý: np.mean(pop[:, segment_vars], axis=0)
-    
-    # 2. Tính centroid của pop_prev tại segment_vars
-    centroid_prev = np.mean(pop_prev[:, segment_vars], axis=0)
-    
-    # 3. Hướng dịch chuyển
-    direction = centroid - centroid_prev
-    
-    # 4. Dịch toàn bộ pop theo direction
-    pop_new[:, segment_vars] += direction
-    
-    # 5. Thêm nhiễu nhỏ để tránh dồn cục
-    pop_new[:, segment_vars] += np.random.normal(0, noise, size=pop_new[:, segment_vars].shape)
+    width = np.asarray(xu, dtype=float) - np.asarray(xl, dtype=float)
+    seg = list(segment_vars)
+    noise = np.random.normal(0.0, sigma_frac, size=(pop.shape[0], len(seg)))
+    pop_new[:, seg] += noise * width[seg]
+    return np.clip(pop_new, xl, xu)
 
-    # 6. Clip
-    pop_new = np.clip(pop_new, 0, 1)
-    
-    return pop_new
+def action_predict(pop, pop_prev, segment_vars, xl, xu, noise_frac=0.02):
+    """
+    Du doan tuyen tinh theo huong dich chuyen cua CENTROID. Nhieu scale
+    theo do rong moi chieu; clip theo [xl, xu].
+    """
+    pop_new = pop.copy()
+    seg = list(segment_vars)
+    width = np.asarray(xu, dtype=float) - np.asarray(xl, dtype=float)
+    direction = (np.mean(pop[:, seg], axis=0)
+                 - np.mean(pop_prev[:, seg], axis=0))
+    pop_new[:, seg] += direction
+    pop_new[:, seg] += (np.random.normal(0.0, noise_frac,
+                                         size=(pop.shape[0], len(seg)))
+                        * width[seg])
+    return np.clip(pop_new, xl, xu)
 
-def action_memory_global(pop, pop_mem):
+def action_memory_global(pop, pop_mem, xl, xu):
     """
     Thay TOAN BO population bang population lich su.
     KHONG splice segment — day la thay doi thiet ke, xem 4.1.
@@ -204,37 +194,33 @@ def action_memory_global(pop, pop_mem):
     n = min(len(pop), len(pop_mem))
     pop_new = pop.copy()
     pop_new[:n] = pop_mem[:n]
-    return repair(pop_new)
+    return repair(pop_new, xl, xu)
 
 
-def action_memory(pop, memory, key, segment_vars):
+def action_memory(pop, memory, key, segment_vars, xl, xu):
     """
     DEPRECATED: splice segment mau thuan voi canh bao coupling muc 5.8;
     thay bang action_memory_global tu 4.1.
     """
     pop_mem = memory.retrieve(key)
-    
     if pop_mem is None:
-        return action_local(pop, segment_vars)
-    
+        return action_local(pop, segment_vars, xl, xu)
     pop_new = pop.copy()
     n = min(len(pop), len(pop_mem))
     pop_new[:n, segment_vars] = pop_mem[:n, segment_vars]
+    return repair(pop_new, xl, xu)
     
-    return repair(pop_new)    # ← thêm bước repair
-    
-def action_diversify(pop, segment_vars, ratio=0.5):
+def action_diversify(pop, segment_vars, xl, xu, ratio=0.5):
     """
-    Thay ratio% cá thể bằng giá trị random ở các biến của segment
+    Thay ratio% ca the bang gia tri random trong [xl, xu] cua segment.
     """
     pop_new = pop.copy()
+    xl = np.asarray(xl, dtype=float); xu = np.asarray(xu, dtype=float)
     n_replace = int(pop.shape[0] * ratio)
     indices = np.random.choice(pop.shape[0], n_replace, replace=False)
-
     for idx in indices:
-        for var_idx in segment_vars:
-            pop_new[idx, var_idx] = np.random.rand()  # random [0,1]
-
+        for j in segment_vars:
+            pop_new[idx, j] = xl[j] + np.random.rand() * (xu[j] - xl[j])
     return pop_new
 
 
@@ -266,14 +252,14 @@ def count_fe(gate, seg_actions, N):
 
 
 def apply_hierarchical_response(pop, pop_prev, gate, seg_actions,
-                                segments, pop_mem):
+                                segments, pop_mem, xl, xu):
     """
     gate=1 (MEMORY): thay TOAN BO pop bang pop_mem. seg_actions BO QUA.
     gate=0: chay seg_actions tren tung segment, KHONG dung pop_mem.
     """
     if gate == GATE_MEMORY:
         assert pop_mem is not None, "MEMORY chosen but archive empty"
-        return action_memory_global(pop, pop_mem)
+        return action_memory_global(pop, pop_mem, xl, xu)
 
     pop_new = pop.copy()
     for s, a in enumerate(seg_actions):
@@ -281,16 +267,16 @@ def apply_hierarchical_response(pop, pop_prev, gate, seg_actions,
         if a == SEG_KEEP:
             pass
         elif a == SEG_LOCAL:
-            pop_new = action_local(pop_new, v)
+            pop_new = action_local(pop_new, v, xl, xu)
         elif a == SEG_PREDICT:
-            pop_new = action_predict(pop_new, pop_prev, v)
+            pop_new = action_predict(pop_new, pop_prev, v, xl, xu)
         elif a == SEG_DIVERSIFY:
-            pop_new = action_diversify(pop_new, v)
+            pop_new = action_diversify(pop_new, v, xl, xu)
         else:
             raise ValueError(f"bad seg action {a}")
-    return repair(pop_new)
+    return repair(pop_new, xl, xu)
 
-def apply_actions(pop, pop_prev, actions, segments, pop_mem=None):
+def apply_actions(pop, pop_prev, actions, segments, xl, xu, pop_mem=None):
     """
     DEPRECATED (4.1B): map cu 3=memory, 4=diversify. MEMORY gio la
     gate toan cuc — dung apply_hierarchical_response.
@@ -313,14 +299,14 @@ def apply_actions(pop, pop_prev, actions, segments, pop_mem=None):
         if a == 0:
             pass                                    # keep
         elif a == 1:
-            pop_new = action_local(pop_new, seg_vars)
+            pop_new = action_local(pop_new, seg_vars, xl, xu)
         elif a == 2:
-            pop_new = action_predict(pop_new, pop_prev, seg_vars)
+            pop_new = action_predict(pop_new, pop_prev, seg_vars, xl, xu)
         elif a == 3:
-            pop_new = (action_memory_global(pop_new, pop_mem)
+            pop_new = (action_memory_global(pop_new, pop_mem, xl, xu)
                        if pop_mem is not None
-                       else action_local(pop_new, seg_vars))
+                       else action_local(pop_new, seg_vars, xl, xu))
         elif a == 4:
-            pop_new = action_diversify(pop_new, seg_vars)
+            pop_new = action_diversify(pop_new, seg_vars, xl, xu)
 
-    return repair(pop_new)
+    return repair(pop_new, xl, xu)
