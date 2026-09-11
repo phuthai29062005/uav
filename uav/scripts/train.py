@@ -30,7 +30,7 @@ from pymoo.problems.dynamic.df import (
     DF8, DF9, DF10, DF11, DF12, DF13, DF14,
 )
 
-from baselines import NSGA2Baseline
+from baseline_runner import run_nsga2_baseline
 from dqn_agent import DQNAgent
 from dynamic_runner import run_sa_drl
 from experiment_logger import ExperimentLogger
@@ -274,22 +274,24 @@ def mode_ablation(names, n_episodes, n_runs, n_changes, log_path):
 
 
 def mode_baseline(names, n_runs, n_changes, log_path):
-    print("=== BASELINE — NSGA-II thuan, khong phan ung ===\n")
-    segments = make_segments(CFG["D"])
+    print("=== BASELINE — Dynamic NSGA-II thuan (khong qua SA-DRL) ===\n")
     logger = ExperimentLogger(log_path)
     results = {}
     for name in names:
+        N, ref_point = problem_setup(name)
         migds, t0 = [], time.time()
         for run in range(n_runs):
             seed = EVAL_SEED_BASE + run
-            agent = NSGA2Baseline(n_segments=len(segments))
             params = _base_params(name, n_changes)
-            result = logged_run(
-                logger, algo="NSGA2-baseline",
-                name=name, agent=agent, segments=segments,
-                seed=seed, training=False, n_changes=n_changes,
-                params=params,
-            )
+            with logger.run(algo="NSGA2-baseline", problem=name,
+                            seed=seed, params=params):
+                result = run_nsga2_baseline(
+                    ALL_PROBLEMS[name], n_t=CFG["n_t"], tau_t=CFG["tau_t"],
+                    N=N, D=CFG["D"], n_changes=n_changes,
+                    warm_up=CFG["warm_up"], seed=seed, ref_point=ref_point)
+                logger.record(migd=result["migd"], hv=result["hv_final"],
+                              fes=result["fes_used"],
+                              feasible_ratio=result["feasible_ratio"])
             migds.append(result["migd"])
         results[name] = (float(np.mean(migds)),
                          float(np.std(migds)), migds)

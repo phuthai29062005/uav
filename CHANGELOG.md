@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.9 — clean Dynamic NSGA-II baseline
+
+The Dynamic NSGA-II baseline now runs through a dedicated baseline runner
+(src/baseline_runner.py::run_nsga2_baseline) and no longer incurs
+ChangeDetector, memory, DQN/state-building, or response-operator overhead.
+Previously the baseline passed a no-op agent through run_sa_drl, paying for
+detector/signature FE and a second (wasted) population reevaluation per
+change. Prior baseline runtime/FE comparisons are invalidated. (Prior
+NSGA-II quality results were already invalidated by the bounds, tournament,
+and timeline fixes in 4.5B/4.5A/4.6A — not solely by 4.9.)
+
 ## 4.8 — state semantics cleanup
 
 Default controller state no longer includes CEC oracle phase or the
