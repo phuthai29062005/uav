@@ -16,7 +16,7 @@ from change_detector import ChangeDetector  # noqa: E402
 from nsga2_pymoo import nsga2_one_generation, seed_nsga2  # noqa: E402
 from sa_drl_dmoea import (action_diversify, action_local,  # noqa: E402
                           action_memory_global, action_predict,
-                          apply_hierarchical_response, compute_entropy, repair)
+                          apply_hierarchical_response, compute_dispersion, repair)
 
 ALL = [DF1, DF2, DF3, DF4, DF5, DF6, DF7, DF8, DF9, DF10, DF11, DF12, DF13, DF14]
 DIFF_BOUNDS = {3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14}   # bounds != [0,1]
@@ -80,7 +80,7 @@ def test_b2_actions_stay_in_domain():
 def test_b3_entropy_normalized():
     p = DF4(time=0.0, n_var=10)
     pop = init_pop(p, N=500, seed=7)
-    e = compute_entropy(pop, p.xl, p.xu)
+    e = compute_dispersion(pop, p.xl, p.xu)
     assert 0.8 < e <= 1.0, e                    # uniform -> ~1, KHONG ~3.4
 
 

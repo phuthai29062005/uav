@@ -119,7 +119,7 @@ def test_r9_last_transition_pushed_terminal():
     from dqn_agent import DQNAgent
     import torch
     torch.manual_seed(0)
-    ag = DQNAgent(state_dim=len(SEGS) + 6, n_segments=2, eps_fixed=0.3)
+    ag = DQNAgent(state_dim=len(SEGS) + 4, n_segments=2, eps_fixed=0.3)
     dynamic_runner.run_sa_drl(
         DF1, n_t=10, tau_t=3, N=20, D=D, n_changes=K, warm_up=5,
         agent=ag, segments=SEGS, seed=0, training=True,

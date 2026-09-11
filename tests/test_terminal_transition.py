@@ -27,7 +27,7 @@ def run_baseline(changes=3, warm_up=5, tau_t=3, N=20, seed=0):
 
 def run_dqn(changes=3, warm_up=5, tau_t=3, N=20, seed=0, training=True):
     torch.manual_seed(seed)
-    ag = DQNAgent(state_dim=len(SEGS) + 6, n_segments=2, eps_fixed=0.3)
+    ag = DQNAgent(state_dim=len(SEGS) + 4, n_segments=2, eps_fixed=0.3)
     res = dynamic_runner.run_sa_drl(
         DF1, n_t=10, tau_t=tau_t, N=N, D=D, n_changes=changes,
         warm_up=warm_up, agent=ag, segments=SEGS, seed=seed,

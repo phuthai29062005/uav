@@ -96,15 +96,30 @@ def compute_change_vector(elite, problem_new, segments, D):
 
     return c
 
-def compute_entropy(pop, xl, xu):
+def compute_dispersion(pop, xl, xu):
     """
-    Normalized dispersion cua population, chuan hoa theo do rong moi
-    chieu. Uniform[xl,xu] -> ~1. (Van khong phai entropy that, rename 4.8.)
+    Normalized decision-space population dispersion.
+
+    For each variable j, std is normalized by the standard deviation of
+    Uniform[xl_j, xu_j], i.e. width/sqrt(12). A value near 1 therefore
+    means spread comparable to a uniform population over the search
+    interval.
+
+    This is NOT information-theoretic entropy.
     """
     width = np.asarray(xu, dtype=float) - np.asarray(xl, dtype=float)
     sigma = np.std(pop, axis=0)
     dispersion = sigma / (width / np.sqrt(12.0))
     return float(np.clip(np.mean(dispersion), 0.0, 1.0))
+
+
+def compute_entropy(pop, xl, xu):
+    """DEPRECATED (4.8): doi ten thanh compute_dispersion (khong phai
+    entropy). Giu wrapper cho code/test cu."""
+    import warnings
+    warnings.warn("compute_entropy renamed to compute_dispersion",
+                  DeprecationWarning, stacklevel=2)
+    return compute_dispersion(pop, xl, xu)
 
 def compute_hv_drop(F_before, F_after, ref_point):
     """
@@ -126,11 +141,12 @@ def compute_hv_drop(F_before, F_after, ref_point):
 
 def compute_phase(t, period=4.0):
     """
-    Pha trong chu kỳ, ∈ [0, 1)
-    Trên CEC: G(t) = sin(0.5πt) → chu kỳ = 4
+    ORACLE-ONLY (4.8): pha trong chu ky CEC (period=4.0 biet truoc).
+    KHONG nam trong default state — trong UAV thuc regime khong biet
+    truoc. Giu lai chi cho future oracle-phase ablation; live runner
+    KHONG goi.
     """
-    phase = (t % period) / period
-    return phase
+    return (t % period) / period
 
 # Segment action IDs (4.1B): MEMORY khong con la segment action.
 SEG_KEEP, SEG_LOCAL, SEG_PREDICT, SEG_DIVERSIFY = 0, 1, 2, 3
@@ -140,15 +156,22 @@ IDX_D_MEM = -2
 IDX_HAS_MEMORY = -1
 
 
-def build_state(c, entropy, hv_drop, g_last, tau_t, phase,
-                d_mem, has_memory):
+def build_state(c, dispersion, hv_drop, d_mem, has_memory):
     """
-    [c_1..c_S, entropy, hv_drop, g_norm, phase, d_mem, has_memory]
-    return: np.array shape (S + 6,). has_memory LUON la phan tu cuoi.
+    State chinh thuc (4.8), state_dim = S + 4:
+      [0..S-1]  c_s        : normalized temporal segment-change severity
+      [S]       dispersion : normalized decision-space population spread
+      [S+1]     hv_drop    : quality loss do environment change gay ra
+      [S+2]     d_mem      : normalized distance den signature lich su gan nhat
+      [S+3]     has_memory : archive co it nhat 1 candidate hay khong
+
+    Da BO g_norm (hang so 0/1, khong mang thong tin) va phase (CEC oracle).
+    dispersion KHONG phai entropy; has_memory LUON la phan tu cuoi.
     """
-    g_norm = g_last / tau_t
-    return np.concatenate([c, [entropy, hv_drop, g_norm, phase,
-                               float(d_mem), float(has_memory)]])
+    state = np.concatenate([c, [float(dispersion), float(hv_drop),
+                                float(d_mem), float(has_memory)]])
+    assert np.all(np.isfinite(state)), state
+    return state
     
 def action_keep(pop, segment_vars):
     return pop.copy()

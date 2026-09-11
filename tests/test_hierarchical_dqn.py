@@ -16,7 +16,7 @@ from sa_drl_dmoea import (IDX_D_MEM, IDX_HAS_MEMORY,  # noqa: E402
                           apply_hierarchical_response, repair)
 
 S = 2
-STATE_DIM = S + 6
+STATE_DIM = S + 4
 
 
 def make_state(has_memory, d_mem=0.5, seed=0):
@@ -140,13 +140,13 @@ def test_memory_without_archive_raises():
 # ----------------------------------------------- H8: SHAPES S=1,2,6
 @pytest.mark.parametrize("n_seg", [1, 2, 6])
 def test_h8_shapes(n_seg):
-    ag = DQNAgent(state_dim=n_seg + 6, n_segments=n_seg)
-    x = torch.rand(5, n_seg + 6)
+    ag = DQNAgent(state_dim=n_seg + 4, n_segments=n_seg)
+    x = torch.rand(5, n_seg + 4)
     q_gate, adv = ag.online(x)
     assert q_gate.shape == (5, 2)
     assert adv.shape == (5, n_seg, 4)
     assert torch.allclose(adv.mean(dim=2), torch.zeros(5, n_seg), atol=1e-6)
-    st = np.random.rand(n_seg + 6).astype(np.float32)
+    st = np.random.rand(n_seg + 4).astype(np.float32)
     st[IDX_HAS_MEMORY] = 1.0
     gate, seg = ag.select_action(st, training=False)
     assert gate in (0, 1) and seg.shape == (n_seg,)
