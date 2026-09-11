@@ -221,7 +221,8 @@ def mode_online(names, n_runs, n_changes, log_path):
             seed = EVAL_SEED_BASE + run
             agent = new_agent(segments, seed, eps_fixed=0.3)
             params = _base_params(name, n_changes,
-                                  eps_fixed=0.3, hidden=64, gamma=0.95)
+                                  eps_fixed=0.3, hidden=64, gamma=0.95,
+                                  target_tau=0.01)
             result = logged_run(
                 logger, algo="SA-DRL-DMOEA-online",
                 name=name, agent=agent, segments=segments,
