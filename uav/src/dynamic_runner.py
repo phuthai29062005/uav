@@ -8,7 +8,7 @@ from memory_archive import (MemoryArchive, calibrate_scale,
 from nsga2_pymoo import nsga2_one_generation, seed_nsga2
 from sa_drl_dmoea import (IDX_HAS_MEMORY, apply_hierarchical_response,
                           build_state, compute_entropy, compute_hv_drop,
-                          compute_phase, compute_reward, count_fe)
+                          compute_phase, compute_reward)
 
 
 def validate_transition(state, gate):
@@ -65,9 +65,19 @@ def run_sa_drl(problem_class, n_t, tau_t,
 
     add_fe("initial", len(pop))
 
-    pending_state = pending_gate = pending_seg = pending_hv_base = None
-    pending_fe = 0
-    igd_history = []
+    def _igd(prob, Fvals):
+        pf = prob.pareto_front()
+        return float(IGD(pf)(Fvals)) if pf is not None and len(pf) else None
+
+    pending_state = pending_gate = pending_seg = pending_hv_pre = None
+    pending_action_fe = 0
+    igd_pre_history = []
+    igd_response_history = []
+    igd_end_history = []
+    hv_pre_history = []
+    hv_response_history = []
+    hv_end_history = []
+    reward_history = []
     raw_change_history = []
     normalized_change_history = []
     d_mem_history = []
@@ -93,26 +103,31 @@ def run_sa_drl(problem_class, n_t, tau_t,
                              "t_old": t_old, "t_new": t_new,
                              "gens_in_old_env": tau_t})
 
-            # 1. Chot reward cho quyet dinh truoc
+            # 1. END metric cua environment VUA KET THUC (t_{k-1}), do
+            #    duoi problem HIEN TAI (van la t_{k-1}); dong thoi chot
+            #    reward cho action t_{k-1}: quality = (HV_end - HV_pre).
             if pending_state is not None:
-                hv_after = hv_calc(F)
-                reward = compute_reward(hv_after, pending_hv_base, hv_ref,
-                                        pending_fe, fe_budget)
+                hv_end = hv_calc(F)
+                igd_end_history.append(_igd(problem, F))
+                hv_end_history.append(float(hv_end))
+                reward = compute_reward(hv_end, pending_hv_pre, hv_ref,
+                                        pending_action_fe, fe_budget)
+                reward_history.append(float(reward))
             else:
                 reward = None
 
-            # 2. STORE population cuoi cua environment VUA ROI, voi
-            #    signature cua environment VUA ROI. Entry cua t chi
-            #    duoc store sau khi da roi khoi t -> khong tu retrieve.
+            # 2. STORE population cuoi cua environment VUA ROI.
             if pending_signature is not None:
                 archive.store(pending_signature, pop)
 
-            # 3. Sang moi truong moi
+            # 3. Sang moi truong moi + PRE metric (pop ke thua duoi t_k)
             problem_new = problem_class(time=t_new, n_var=D)
             F_before = F.copy()
-            F_after_change = problem_new.evaluate(pop)
+            F_pre = problem_new.evaluate(pop)
             add_fe("response", len(pop))
-            hv_base = hv_calc(F_after_change)
+            hv_pre = hv_calc(F_pre)
+            igd_pre_history.append(_igd(problem_new, F_pre))
+            hv_pre_history.append(float(hv_pre))
 
             # RETRIEVE — truoc khi store bat cu thu gi cua t
             sig_t, sat = compute_signature(X_probe, problem_new,
@@ -131,13 +146,13 @@ def run_sa_drl(problem_class, n_t, tau_t,
             raw_change_history.append(res_c["c_tilde"].tolist())
             normalized_change_history.append(c.tolist())
             entropy = compute_entropy(pop, xl, xu)
-            hv_drop = compute_hv_drop(F_before, F_after_change, ref_point)
+            hv_drop = compute_hv_drop(F_before, F_pre, ref_point)
             phase   = compute_phase(t_new)
             state   = build_state(c, entropy, hv_drop, 0, tau_t, phase,
                                   d_mem=mem["d_mem"],
                                   has_memory=float(mem["has_memory"]))
 
-            # 5. Push transition
+            # 5. Push transition cua action truoc (next_state = state moi)
             if reward is not None:
                 validate_transition(pending_state, pending_gate)
                 agent.replay_buffer.push(pending_state, pending_gate,
@@ -145,38 +160,37 @@ def run_sa_drl(problem_class, n_t, tau_t,
                 if training:
                     agent.learn()
 
-            # 6. Chon + thi hanh
+            # 6. Chon + thi hanh + RESPONSE metric
             gate, seg = agent.select_action(state, training=training)
             gate_history.append(int(gate))
             seg_history.append([int(a) for a in seg])
             pop_new = apply_hierarchical_response(pop, pop_prev, gate, seg,
                                                   segments, mem["pop"],
                                                   xl, xu)
-
             pop_prev = pop.copy()
             pop = pop_new
             problem = problem_new
             F = problem.evaluate(pop)
-            add_fe("response", len(pop))   # eval THUC TE, luon N (xem audit)
+            add_fe("response", len(pop))   # F_response, luon N (xem audit 4.6B)
+            igd_response_history.append(_igd(problem, F))
+            hv_response_history.append(float(hv_calc(F)))
 
-            # 7. Cat pending. count_fe (DEPRECATED) khong con vao FE path;
-            #    pending_fe cho reward van dung uoc luong cu (4.2 se sua).
+            # 7. Cat pending. Cost = ACTUAL FE sau response (4.6B), khong
+            #    count_fe. Implementation CEC eval ca population sau moi
+            #    response nen FE cost bang nhau moi action; giu lai cho
+            #    tinh lien tuc protocol va setting tuong lai co action-
+            #    dependent evaluation cost.
             pending_state, pending_gate, pending_seg = state, gate, seg
-            pending_hv_base = hv_base
-            pending_fe = count_fe(gate, seg, N)
+            pending_hv_pre = hv_pre
+            pending_action_fe = len(pop)
             pending_signature = sig_t
-
-            # 8. Ghi IGD
-            PF = problem.pareto_front()
-            if PF is not None and len(PF) > 0:
-                igd_history.append(IGD(PF)(F))
 
             current_time = t_new
 
             if verbose and change_count % 20 == 0:
                 print(f"  Change {change_count:3d}, t={t_new:.2f}, "
                       f"c={np.round(c,2)}, gate={gate}, seg={seg}, "
-                      f"IGD={igd_history[-1]:.6f}")
+                      f"IGD_resp={igd_response_history[-1]:.6f}")
 
         pop, F, nsga_fe = nsga2_one_generation(pop, F, problem, N,
                                                return_fe=True)
@@ -189,14 +203,33 @@ def run_sa_drl(problem_class, n_t, tau_t,
             archive.obj_scale = calibrate_scale(problem.evaluate(X_probe))
             add_fe("signature", len(X_probe))
 
+    # END metric cua environment cuoi t_K (metric-only; KHONG push
+    # transition, KHONG done=True, KHONG learn -> van la issue 4.7).
+    if pending_state is not None:
+        igd_end_history.append(_igd(problem, F))
+        hv_end_history.append(float(hv_calc(F)))
+
     if training:
         agent.decay_epsilon()
 
     assert fes_counter == sum(fe_breakdown.values()), \
         (fes_counter, fe_breakdown)
     return {
-        "migd": float(np.mean(igd_history)) if igd_history else float("inf"),
-        "igd_history": igd_history,
+        # "migd" giu cho tuong thich; tu 4.2 no LA end-of-environment MIGD.
+        "migd": (float(np.mean(igd_end_history)) if igd_end_history
+                 else float("inf")),
+        "migd_end": (float(np.mean(igd_end_history)) if igd_end_history
+                     else float("inf")),
+        "migd_response": (float(np.mean(igd_response_history))
+                          if igd_response_history else float("inf")),
+        "igd_history": igd_end_history,      # alias -> end
+        "igd_pre_history": igd_pre_history,
+        "igd_response_history": igd_response_history,
+        "igd_end_history": igd_end_history,
+        "hv_pre_history": hv_pre_history,
+        "hv_response_history": hv_response_history,
+        "hv_end_history": hv_end_history,
+        "reward_history": reward_history,
         "fes_used": int(fes_counter),
         "fe_breakdown": dict(fe_breakdown),
         "raw_change": raw_change_history,
