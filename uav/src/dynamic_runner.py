@@ -36,15 +36,18 @@ def run_sa_drl(problem_class, n_t, tau_t,
     archive = MemoryArchive()
     archive.clear()
     obj_scale = np.asarray(ref_point, dtype=float)   # cho ChangeDetector
+    _p0 = problem_class(time=0.0, n_var=D)
+    xl, xu = np.asarray(_p0.xl, dtype=float), np.asarray(_p0.xu, dtype=float)
     detector = ChangeDetector(
         segments=segments,
         obj_scale=np.asarray(ref_point, dtype=float),
+        lb=xl, ub=xu,
         eps=0.01, kappa=2.0, lam=0.05, verbose=False,
     )
     # Probe set dong bang ca episode: c_tilde phai do environmental
     # change, khong tron voi population movement (xem QUY TAC 3).
     X_probe = None
-    pop = np.random.rand(N, D)
+    pop = xl + np.random.rand(N, D) * (xu - xl)
     pop_prev = pop.copy()
     problem = problem_class(time=0.0, n_var=D)
     F = problem.evaluate(pop)
@@ -106,7 +109,7 @@ def run_sa_drl(problem_class, n_t, tau_t,
             fes_counter += res_c["fe_used"]
             raw_change_history.append(res_c["c_tilde"].tolist())
             normalized_change_history.append(c.tolist())
-            entropy = compute_entropy(pop)
+            entropy = compute_entropy(pop, xl, xu)
             hv_drop = compute_hv_drop(F_before, F_after_change, ref_point)
             phase   = compute_phase(t_new)
             state   = build_state(c, entropy, hv_drop, 0, tau_t, phase,
@@ -126,7 +129,8 @@ def run_sa_drl(problem_class, n_t, tau_t,
             gate_history.append(int(gate))
             seg_history.append([int(a) for a in seg])
             pop_new = apply_hierarchical_response(pop, pop_prev, gate, seg,
-                                                  segments, mem["pop"])
+                                                  segments, mem["pop"],
+                                                  xl, xu)
 
             pop_prev = pop.copy()
             pop = pop_new
