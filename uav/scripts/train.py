@@ -26,9 +26,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 import numpy as np
 import torch
 from pymoo.problems.dynamic.df import (
-    DF1, DF2, DF3, DF4, DF5, DF6, DF7,
-    DF8, DF9, DF10, DF11, DF12, DF13, DF14,
+    DF1, DF2, DF3, DF4, DF6, DF7,
+    DF8, DF9, DF10, DF11, DF14,
 )
+# DF5/12/13: dung ban numerically-stabilized (snap sin gan-zero truoc
+# floor) de tranh discontinuity gia tai bien chu ky (4.10C.1).
+from df_stable import DF5Stable as DF5, DF12Stable as DF12, DF13Stable as DF13
 
 from baseline_runner import run_nsga2_baseline
 from dqn_agent import DQNAgent
