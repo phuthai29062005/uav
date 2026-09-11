@@ -35,7 +35,20 @@ def _validate_ref_point(ref_point, n_obj):
 def run_sa_drl(problem_class, n_t, tau_t,
                N, D, n_changes, warm_up,
                agent, segments, seed=0, training=True,
-               ref_point=None, n_elite=10, verbose=False):
+               ref_point=None, n_elite=10, verbose=False,
+               mask_change_state=False, disable_memory=False):
+    """
+    mask_change_state, disable_memory (5.3B ablation hooks): both default
+    False, in which case behavior is EXACTLY the production A4 path
+    (verified by the Phan 7 regression guard). mask_change_state=True
+    (A2): ChangeDetector still runs and real c is still logged, but the
+    policy is fed zeros in place of c. disable_memory=True (A3): signature
+    calibration/computation and archive query/store are skipped entirely
+    (zero signature FE, zero query/store calls); state always carries
+    d_mem=1.0, has_memory=0.0, which makes the existing hierarchical mask
+    in DQNAgent structurally forbid the MEMORY gate — no separate gate
+    override is needed.
+    """
 
     np.random.seed(seed)
     import random
@@ -131,7 +144,7 @@ def run_sa_drl(problem_class, n_t, tau_t,
                 reward = None
 
             # 2. STORE population cuoi cua environment VUA ROI.
-            if pending_signature is not None:
+            if not disable_memory and pending_signature is not None:
                 archive.store(pending_signature, pop)
 
             # 3. Sang moi truong moi + PRE metric (pop ke thua duoi t_k)
@@ -144,12 +157,17 @@ def run_sa_drl(problem_class, n_t, tau_t,
             hv_pre_history.append(float(hv_pre))
 
             # RETRIEVE — truoc khi store bat cu thu gi cua t
-            sig_t, sat = compute_signature(X_probe, problem_new,
-                                           archive.obj_scale,
-                                           return_saturation=True)
-            add_fe("signature", len(X_probe))
-            sig_saturation_history.append(sat)
-            mem = archive.query(sig_t)
+            if disable_memory:
+                sig_t = None
+                sig_saturation_history.append(None)
+                mem = {"has_memory": False, "d_mem": 1.0, "pop": None, "index": None}
+            else:
+                sig_t, sat = compute_signature(X_probe, problem_new,
+                                               archive.obj_scale,
+                                               return_saturation=True)
+                add_fe("signature", len(X_probe))
+                sig_saturation_history.append(sat)
+                mem = archive.query(sig_t)
             d_mem_history.append(mem["d_mem"])
             has_memory_history.append(mem["has_memory"])
 
@@ -158,10 +176,11 @@ def run_sa_drl(problem_class, n_t, tau_t,
             c       = res_c["c"]
             add_fe("detector", res_c["fe_used"])
             raw_change_history.append(res_c["c_tilde"].tolist())
-            normalized_change_history.append(c.tolist())
+            normalized_change_history.append(c.tolist())          # log real c
+            c_for_state = np.zeros_like(c) if mask_change_state else c
             dispersion = compute_dispersion(pop, xl, xu)
             hv_drop = compute_hv_drop(F_before, F_pre, ref_point)
-            state   = build_state(c, dispersion, hv_drop,
+            state   = build_state(c_for_state, dispersion, hv_drop,
                                   d_mem=mem["d_mem"],
                                   has_memory=float(mem["has_memory"]))
 
@@ -212,9 +231,10 @@ def run_sa_drl(problem_class, n_t, tau_t,
         if gen == warm_up - 1:
             X_probe = pop[:n_elite].copy()
             add_fe("detector", detector.prime(X_probe, problem))
-            # Scale signature do MOT LAN tai t0, co dinh trong run.
-            archive.obj_scale = calibrate_scale(problem.evaluate(X_probe))
-            add_fe("signature", len(X_probe))
+            if not disable_memory:
+                # Scale signature do MOT LAN tai t0, co dinh trong run.
+                archive.obj_scale = calibrate_scale(problem.evaluate(X_probe))
+                add_fe("signature", len(X_probe))
 
     # END metric + TERMINAL transition cua environment cuoi t_K (4.7).
     # F la pop cuoi t_K sau du tau_t generations; problem van la t_K.
