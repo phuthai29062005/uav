@@ -203,11 +203,24 @@ def run_sa_drl(problem_class, n_t, tau_t,
             archive.obj_scale = calibrate_scale(problem.evaluate(X_probe))
             add_fe("signature", len(X_probe))
 
-    # END metric cua environment cuoi t_K (metric-only; KHONG push
-    # transition, KHONG done=True, KHONG learn -> van la issue 4.7).
+    # END metric + TERMINAL transition cua environment cuoi t_K (4.7).
+    # F la pop cuoi t_K sau du tau_t generations; problem van la t_K.
+    # KHONG tao env K+1, KHONG detector/query/signature moi, KHONG eval
+    # objective moi -> FE khong tang.
     if pending_state is not None:
+        hv_end = hv_calc(F)
         igd_end_history.append(_igd(problem, F))
-        hv_end_history.append(float(hv_calc(F)))
+        hv_end_history.append(float(hv_end))
+        reward = compute_reward(hv_end, pending_hv_pre, hv_ref,
+                                pending_action_fe, fe_budget)
+        reward_history.append(float(reward))
+        # Terminal next_state chi la cau truc; done=True mask bootstrap.
+        terminal_next_state = np.zeros_like(pending_state)
+        validate_transition(pending_state, pending_gate)
+        agent.replay_buffer.push(pending_state, pending_gate, pending_seg,
+                                 reward, terminal_next_state, True)
+        if training:
+            agent.learn()
 
     if training:
         agent.decay_epsilon()
