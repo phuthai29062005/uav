@@ -50,6 +50,8 @@ TRAIN_CHANGES = 30        # rut ngan khi train cho nhanh
 EVAL_CHANGES = 100        # dung chuan CEC khi danh gia
 N_EVAL_RUNS = 30          # so seed doc lap khi danh gia (MSO: toi thieu 30)
 EVAL_SEED_BASE = 100_000  # tach hoan toan khoi dai seed training
+TRAIN_SEED_BASE = 30      # model init + episode seed base (30..30+n_ep-1)
+N_TRAIN_EPISODES = 200    # ngan sach train co dinh (frozen protocol)
 
 
 SPECIAL_REF = {
@@ -72,7 +74,8 @@ def problem_setup(name):
 
 
 def make_segments(D, n_seg=2):
-    """n_seg=2: [vi tri, khoang cach].  n_seg=1: khong phan doan."""
+    """Fixed index-based two-block partition.
+    n_seg=2: [block-1=[x0], block-2=[x1..x_{D-1}]]; n_seg=1: mot khoi."""
     if n_seg == 1:
         return [list(range(D))]
     return [[0], list(range(1, D))]
@@ -107,6 +110,7 @@ def default_log_path(mode, problems):
         "loo": "bang2_loo",
         "ablation": "bang3_ablation",
         "baseline": "baseline_nsga2",
+        "frozen": "bang1_frozen",
     }[mode]
     return f"results/{base}.jsonl"
 
@@ -276,6 +280,62 @@ def mode_ablation(names, n_episodes, n_runs, n_changes, log_path):
     return results
 
 
+def _assert_disjoint_seeds(train_seeds, test_seeds):
+    inter = set(train_seeds) & set(test_seeds)
+    if inter:
+        raise ValueError(f"train/test seeds overlap: {sorted(inter)[:5]}")
+
+
+def mode_frozen(names, n_episodes, n_runs, n_changes, log_path):
+    """
+    PRIMARY protocol: per-DF train -> freeze final weights -> eval tren
+    unseen paired test seeds (epsilon=0, khong learn). Khong validation/
+    model-selection (fixed-final-checkpoint), khong shared multi-DF model.
+    """
+    print("=== FROZEN — per-DF train, freeze, test unseen (PRIMARY) ===\n")
+    segments = make_segments(CFG["D"])
+    logger = ExperimentLogger(log_path)
+    train_seeds = [TRAIN_SEED_BASE + ep for ep in range(n_episodes)]
+    test_seeds = [EVAL_SEED_BASE + r for r in range(n_runs)]
+    _assert_disjoint_seeds(train_seeds, test_seeds)
+    results = {}
+    for name in names:
+        t0 = time.time()
+        # 1-4: agent moi, train CHI tren DF nay, lay FINAL weights.
+        trained, _ = train_on([name], n_episodes, segments,
+                              seed=TRAIN_SEED_BASE,
+                              log_every=max(1, n_episodes // 2))
+        frozen_online = trained.online.state_dict()
+        frozen_target = trained.target.state_dict()
+        migds = []
+        for s_test in test_seeds:
+            # 4: eval agent MOI moi seed; nap FROZEN online weights.
+            eval_agent = new_agent(segments, s_test)
+            eval_agent.online.load_state_dict(frozen_online)
+            eval_agent.target.load_state_dict(frozen_target)
+            eval_agent.eps = 0.0
+            params = _base_params(
+                name, n_changes,
+                protocol="frozen_per_df", model_seed=TRAIN_SEED_BASE,
+                train_seed_start=TRAIN_SEED_BASE,
+                n_train_episodes=n_episodes,
+                selection_rule="fixed_final_checkpoint",
+                evaluation_seed=s_test, epsilon_eval=0.0,
+                training_during_eval=False,
+                state_dim=len(segments) + 4, n_segments=len(segments),
+                target_tau=eval_agent.target_tau,
+                segmentation="fixed_index_two_block")
+            result = logged_run(
+                logger, algo="SA-DRL-DMOEA-frozen", name=name,
+                agent=eval_agent, segments=segments, seed=s_test,
+                training=False, n_changes=n_changes, params=params)
+            migds.append(result["migd"])
+        results[name] = (float(np.mean(migds)), float(np.std(migds)), migds)
+        print(f"  {name:5s} MIGD_end = {np.mean(migds):.6f} "
+              f"+/- {np.std(migds):.6f}   ({time.time()-t0:.0f}s)")
+    return results
+
+
 def mode_baseline(names, n_runs, n_changes, log_path):
     print("=== BASELINE — Dynamic NSGA-II thuan (khong qua SA-DRL) ===\n")
     logger = ExperimentLogger(log_path)
@@ -307,7 +367,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", default="debug",
                     choices=["debug", "online", "loo", "ablation",
-                             "baseline"])
+                             "baseline", "frozen"])
     ap.add_argument("--problems", default="DF1",
                     help="vi du: DF1  |  DF1,DF2,DF3  |  all")
     ap.add_argument("--episodes", type=int, default=200)
@@ -338,6 +398,9 @@ def main():
                        log_path)
     elif args.mode == "baseline":
         res = mode_baseline(names, args.runs, args.changes, log_path)
+    elif args.mode == "frozen":
+        res = mode_frozen(names, args.episodes, args.runs, args.changes,
+                          log_path)
     else:
         res = mode_ablation(names, args.episodes, args.runs, args.changes,
                             log_path)
