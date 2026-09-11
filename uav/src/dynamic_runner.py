@@ -28,7 +28,8 @@ def run_sa_drl(problem_class, n_t, tau_t,
     import random
     random.seed(seed)
     seed_nsga2(seed)
-    total_gens = warm_up + n_changes * tau_t
+    # Moi env (t=0 va K env sau change) chay tau_t dynamic gens.
+    total_gens = warm_up + (n_changes + 1) * tau_t
     hv_calc = HV(ref_point=np.array(ref_point))
     hv_ref = float(np.prod(ref_point))
     fe_budget = N * tau_t
@@ -64,13 +65,22 @@ def run_sa_drl(problem_class, n_t, tau_t,
     gate_history = []
     seg_history = []
     pending_signature = None
+    current_time = 0.0
+    timeline = []
 
     for gen in range(total_gens):
-        is_change = (gen >= warm_up) and ((gen - warm_up) % tau_t == 0)
+        # Change thu k (1-based) bắn SAU khi env hien tai da chay du tau_t
+        # dynamic gens. Env t=0 vi the co dung tau_t gens truoc change 1.
+        # KHONG con fake 0.0 -> 0.0.
+        is_change = (gen >= warm_up + tau_t) and ((gen - warm_up) % tau_t == 0)
 
         if is_change:
-            change_idx = (gen - warm_up) // tau_t
-            t_new = change_idx / n_t
+            change_count = (gen - warm_up) // tau_t     # 1, 2, 3, ...
+            t_old = current_time
+            t_new = change_count / n_t
+            timeline.append({"change_index": change_count,
+                             "t_old": t_old, "t_new": t_new,
+                             "gens_in_old_env": tau_t})
 
             # 1. Chot reward cho quyet dinh truoc
             if pending_state is not None:
@@ -149,8 +159,10 @@ def run_sa_drl(problem_class, n_t, tau_t,
             if PF is not None and len(PF) > 0:
                 igd_history.append(IGD(PF)(F))
 
-            if verbose and change_idx % 20 == 0:
-                print(f"  Change {change_idx:3d}, t={t_new:.2f}, "
+            current_time = t_new
+
+            if verbose and change_count % 20 == 0:
+                print(f"  Change {change_count:3d}, t={t_new:.2f}, "
                       f"c={np.round(c,2)}, gate={gate}, seg={seg}, "
                       f"IGD={igd_history[-1]:.6f}")
 
@@ -172,6 +184,7 @@ def run_sa_drl(problem_class, n_t, tau_t,
         "igd_history": igd_history,
         "fes_used": int(fes_counter),
         "raw_change": raw_change_history,
+        "timeline": timeline,
         "normalized_change": normalized_change_history,
         "d_mem": d_mem_history,
         "has_memory": has_memory_history,
