@@ -9,3 +9,11 @@ figures/
 *.log
 .env
 .venv/
+
+# Third-party reference PDFs / vendored benchmark source (not needed to
+# run the code -- production imports the installed pymoo package, not
+# this vendor copy). Kept locally, not pushed: unclear redistribution
+# rights for the journal papers under paper/, and data/ is a large
+# reference-only vendor copy.
+paper/
+data/
